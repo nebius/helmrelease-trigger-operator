@@ -9,9 +9,6 @@ issues:
   # restore some of the defaults
   # (fill in the rest as needed)
   exclude-rules:
-    - path: "api/*"
-      linters:
-        - lll
     - path: "internal/*"
       linters:
         - dupl
@@ -22,7 +19,6 @@ linters:
     - dupl
     - errcheck
     - copyloopvar
-    - ginkgolinter
     - goconst
     - gocyclo
     - gofmt

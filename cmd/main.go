@@ -76,21 +76,29 @@ func main() {
 		MaxConcurrency:   5,
 		CacheSyncTimeout: 30 * time.Second,
 	}
-	flag.StringVar(&config.metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
-		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
-	flag.StringVar(&config.probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
+	flag.StringVar(&config.metricsAddr, "metrics-bind-address", "0",
+		"The address the metrics endpoint binds to. "+
+			"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
+	flag.StringVar(&config.probeAddr, "health-probe-bind-address", ":8081",
+		"The address the probe endpoint binds to.")
 	flag.BoolVar(&config.enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
 	flag.BoolVar(&config.secureMetrics, "metrics-secure", true,
-		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
-	flag.StringVar(&config.webhookCertPath, "webhook-cert-path", "", "The directory that contains the webhook certificate.")
-	flag.StringVar(&config.webhookCertName, "webhook-cert-name", "tls.crt", "The name of the webhook certificate file.")
-	flag.StringVar(&config.webhookCertKey, "webhook-cert-key", "tls.key", "The name of the webhook key file.")
+		"If set, the metrics endpoint is served securely via HTTPS."+
+			"Use --metrics-secure=false to use HTTP instead.")
+	flag.StringVar(&config.webhookCertPath, "webhook-cert-path", "",
+		"The directory that contains the webhook certificate.")
+	flag.StringVar(&config.webhookCertName, "webhook-cert-name", "tls.crt",
+		"The name of the webhook certificate file.")
+	flag.StringVar(&config.webhookCertKey, "webhook-cert-key", "tls.key",
+		"The name of the webhook key file.")
 	flag.StringVar(&config.metricsCertPath, "metrics-cert-path", "",
 		"The directory that contains the metrics server certificate.")
-	flag.StringVar(&config.metricsCertName, "metrics-cert-name", "tls.crt", "The name of the metrics server certificate file.")
-	flag.StringVar(&config.metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
+	flag.StringVar(&config.metricsCertName, "metrics-cert-name", "tls.crt",
+		"The name of the metrics server certificate file.")
+	flag.StringVar(&config.metricsCertKey, "metrics-cert-key", "tls.key",
+		"The name of the metrics server key file.")
 	flag.BoolVar(&config.enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 	opts := zap.Options{
@@ -124,7 +132,12 @@ func main() {
 
 	if len(config.webhookCertPath) > 0 {
 		setupLog.Info("Initializing webhook certificate watcher using provided certificates",
-			"webhook-cert-path", config.webhookCertPath, "webhook-cert-name", config.webhookCertName, "webhook-cert-key", config.webhookCertKey)
+			"webhook-cert-path",
+			config.webhookCertPath,
+			"webhook-cert-name",
+			config.webhookCertName,
+			"webhook-cert-key",
+			config.webhookCertKey)
 
 		var err error
 		webhookCertWatcher, err = certwatcher.New(
@@ -173,7 +186,12 @@ func main() {
 	// - [PROMETHEUS-WITH-CERTS] at config/prometheus/kustomization.yaml for TLS certification.
 	if len(config.metricsCertPath) > 0 {
 		setupLog.Info("Initializing metrics certificate watcher using provided certificates",
-			"metrics-cert-path", config.metricsCertPath, "metrics-cert-name", config.metricsCertName, "metrics-cert-key", config.metricsCertKey)
+			"metrics-cert-path",
+			config.metricsCertPath,
+			"metrics-cert-name",
+			config.metricsCertName,
+			"metrics-cert-key",
+			config.metricsCertKey)
 
 		var err error
 		metricsCertWatcher, err = certwatcher.New(
