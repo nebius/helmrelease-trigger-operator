@@ -1,0 +1,4 @@
+resources:
+- manager/manager.yaml
+- rbac/
+namespace: flux-system

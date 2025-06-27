@@ -1,135 +1,318 @@
-# fluxcd-trigger-operator
-// TODO(user): Add simple overview of use/purpose
+# FluxCD Trigger Operator
 
-## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
+A Kubernetes controller that automatically triggers HelmRelease reconciliation when associated ConfigMaps are updated, enabling seamless configuration-driven GitOps workflows.
 
-## Getting Started
+## Overview
 
-### Prerequisites
-- go version v1.23.0+
-- docker version 17.03+.
-- kubectl version v1.11.3+.
-- Access to a Kubernetes v1.11.3+ cluster.
+The FluxCD Trigger Operator monitors ConfigMaps with specific labels and annotations, automatically triggering FluxCD HelmRelease reconciliation when configuration changes are detected. This enables dynamic configuration management where ConfigMap updates can immediately trigger application redeployments without manual intervention.
 
-### To Deploy on the cluster
-**Build and push your image to the location specified by `IMG`:**
+## How It Works
 
-```sh
-make docker-build docker-push IMG=<some-registry>/fluxcd-trigger-operator:tag
+The operator watches for ConfigMaps labeled with `uburro.github.com/fluxcd-trigger-operator: "true"` and:
+
+1. **Monitors ConfigMap Changes**: Detects create, update, and generic events on labeled ConfigMaps
+2. **Extracts HelmRelease References**: Uses annotations to identify the target HelmRelease
+3. **Compares Digests**: Checks if the HelmRelease digest has changed since last reconciliation
+4. **Triggers Reconciliation**: Patches the HelmRelease with force reconciliation annotations when changes are detected
+
+## Features
+
+- **Automatic Triggering**: No manual intervention required for configuration-driven deployments
+- **Digest-based Change Detection**: Prevents unnecessary reconciliations by comparing digests
+- **FluxCD Integration**: Seamlessly works with existing FluxCD HelmRelease resources
+- **Namespace Flexibility**: Supports cross-namespace ConfigMap to HelmRelease references
+- **Configurable Concurrency**: Adjustable reconciliation performance settings
+
+## Prerequisites
+
+- Kubernetes cluster (version 1.19+)
+- FluxCD v2 with Helm Controller installed
+- kubectl CLI tool
+- Appropriate RBAC permissions
+
+## Installation
+
+### Using kubectl
+
+```bash
+kustomize build config | kubectl apply -f
 ```
 
-**NOTE:** This image ought to be published in the personal registry you specified.
-And it is required to have access to pull the image from the working environment.
-Make sure you have the proper permission to the registry if the above commands don’t work.
+### Verify Installation
 
-**Install the CRDs into the cluster:**
-
-```sh
-make install
+```bash
+kubectl get pods -n fluxcd-trigger-operator-system
+kubectl logs -n fluxcd-trigger-operator-system deployment/fluxcd-trigger-operator
 ```
 
-**Deploy the Manager to the cluster with the image specified by `IMG`:**
+## Configuration
 
-```sh
-make deploy IMG=<some-registry>/fluxcd-trigger-operator:tag
+### Required ConfigMap Labels
+
+ConfigMaps must have the following label to be monitored by the operator:
+
+```yaml
+metadata:
+  labels:
+    uburro.github.com/fluxcd-trigger-operator: "true"
 ```
 
-> **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin
-privileges or be logged in as admin.
+### Required ConfigMap Annotations
 
-**Create instances of your solution**
-You can apply the samples (examples) from the config/sample:
+ConfigMaps must include annotations to specify the target HelmRelease:
 
-```sh
-kubectl apply -k config/samples/
+```yaml
+metadata:
+  annotations:
+    # Required: Name of the target HelmRelease
+    uburro.github.com/helmreleases-name: "my-app"
+    
+    # Optional: Namespace of the target HelmRelease (defaults to flux-system)
+    uburro.github.com/helmreleases-namespace: "production"
 ```
 
->**NOTE**: Ensure that the samples has default values to test it out.
+### Environment Variables
 
-### To Uninstall
-**Delete the instances (CRs) from the cluster:**
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `MAX_CONCURRENCY` | Maximum concurrent reconciliations | `10` |
+| `CACHE_SYNC_TIMEOUT` | Controller cache sync timeout | `2m` |
+| `LOG_LEVEL` | Logging level (debug, info, warn, error) | `info` |
 
-```sh
-kubectl delete -k config/samples/
+## Usage
+
+### Basic Example
+
+1. **Create a HelmRelease** (if not already exists):
+
+```yaml
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: my-app
+  namespace: flux-system
+spec:
+  chart:
+    spec:
+      chart: my-app
+      sourceRef:
+        kind: HelmRepository
+        name: my-repo
+      version: "1.0.0"
+  values:
+    configMapRef:
+      name: my-app-config
+      namespace: default
 ```
 
-**Delete the APIs(CRDs) from the cluster:**
+2. **Create a monitored ConfigMap**:
 
-```sh
-make uninstall
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: my-app-config
+  namespace: default
+  labels:
+    uburro.github.com/fluxcd-trigger-operator: "true"
+  annotations:
+    uburro.github.com/helmreleases-name: "my-app"
+    uburro.github.com/helmreleases-namespace: "flux-system"
+data:
+  config.yaml: |
+    database:
+      host: "db.example.com"
+      port: 5432
+    features:
+      enableAuth: true
+      maxConnections: 100
 ```
 
-**UnDeploy the controller from the cluster:**
+3. **Update the ConfigMap** to trigger reconciliation:
 
-```sh
-make undeploy
+```bash
+kubectl patch configmap my-app-config -n default \
+  --type='merge' -p='{"data":{"config.yaml":"database:\n  host: \"new-db.example.com\"\n  port: 5432\nfeatures:\n  enableAuth: true\n  maxConnections: 200"}}'
 ```
 
-## Project Distribution
+The operator will automatically detect the change and trigger HelmRelease reconciliation.
 
-Following the options to release and provide this solution to the users.
+### Cross-Namespace Example
 
-### By providing a bundle with all YAML files
+ConfigMap in `app-configs` namespace triggering HelmRelease in `production` namespace:
 
-1. Build the installer for the image built and published in the registry:
-
-```sh
-make build-installer IMG=<some-registry>/fluxcd-trigger-operator:tag
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: production-config
+  namespace: app-configs
+  labels:
+    uburro.github.com/fluxcd-trigger-operator: "true"
+  annotations:
+    uburro.github.com/helmreleases-name: "production-app"
+    uburro.github.com/helmreleases-namespace: "production"
+data:
+  app.properties: |
+    environment=production
+    replica.count=3
+    resources.limits.memory=2Gi
 ```
 
-**NOTE:** The makefile target mentioned above generates an 'install.yaml'
-file in the dist directory. This file contains all the resources built
-with Kustomize, which are necessary to install this project without its
-dependencies.
+### Multiple ConfigMaps for One HelmRelease
 
-2. Using the installer
+You can have multiple ConfigMaps trigger the same HelmRelease:
 
-Users can just run 'kubectl apply -f <URL for YAML BUNDLE>' to install
-the project, i.e.:
+```yaml
+# Database config
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: db-config
+  namespace: configs
+  labels:
+    uburro.github.com/fluxcd-trigger-operator: "true"
+  annotations:
+    uburro.github.com/helmreleases-name: "my-app"
+data:
+  database.yaml: |
+    host: "db.prod.com"
+    credentials: "secret-ref"
 
-```sh
-kubectl apply -f https://raw.githubusercontent.com/<org>/fluxcd-trigger-operator/<tag or branch>/dist/install.yaml
+---
+# Feature flags config
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: feature-config
+  namespace: configs
+  labels:
+    uburro.github.com/fluxcd-trigger-operator: "true"
+  annotations:
+    uburro.github.com/helmreleases-name: "my-app"
+data:
+  features.yaml: |
+    experimental: false
+    newUI: true
 ```
 
-### By providing a Helm Chart
+## RBAC Requirements
 
-1. Build the chart using the optional helm plugin
+The operator requires the following Kubernetes permissions:
 
-```sh
-kubebuilder edit --plugins=helm/v1-alpha
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: fluxcd-trigger-operator
+rules:
+# ConfigMap permissions
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list", "watch", "patch"]
+
+# HelmRelease permissions
+- apiGroups: ["helm.toolkit.fluxcd.io"]
+  resources: ["helmreleases"]
+  verbs: ["get", "list", "watch", "patch"]
 ```
 
-2. See that a chart was generated under 'dist/chart', and users
-can obtain this solution from there.
+## Monitoring and Troubleshooting
 
-**NOTE:** If you change the project, you need to update the Helm Chart
-using the same command above to sync the latest changes. Furthermore,
-if you create webhooks, you need to use the above command with
-the '--force' flag and manually ensure that any custom configuration
-previously added to 'dist/chart/values.yaml' or 'dist/chart/manager/manager.yaml'
-is manually re-applied afterwards.
+### Checking Operator Status
+
+```bash
+# View operator logs
+kubectl logs -n fluxcd-trigger-operator-system deployment/fluxcd-trigger-operator
+
+# Check if ConfigMaps are being watched
+kubectl get configmaps -l uburro.github.com/fluxcd-trigger-operator=true -A
+
+# Verify HelmRelease reconciliation
+kubectl get helmreleases -A
+kubectl describe helmrelease my-app -n flux-system
+```
+
+### Common Issues
+
+1. **ConfigMap changes not triggering reconciliation**
+   - Verify the ConfigMap has the required label: `uburro.github.com/fluxcd-trigger-operator: "true"`
+   - Check annotations for correct HelmRelease name and namespace
+   - Ensure the target HelmRelease exists
+
+2. **RBAC permission errors**
+   - Verify the operator has proper ClusterRole permissions
+   - Check if ServiceAccount is correctly bound to ClusterRoleBinding
+
+3. **Cross-namespace access issues**
+   - Ensure the operator has permissions to access resources in target namespaces
+   - Verify namespace names in annotations are correct
+
+### Debug Commands
+
+```bash
+# Check ConfigMap annotations and labels
+kubectl get configmap my-app-config -o yaml
+
+# View HelmRelease status and history
+kubectl get helmrelease my-app -o jsonpath='{.status.history[0]}'
+
+# Monitor operator events
+kubectl get events -n fluxcd-trigger-operator-system
+
+# Check if reconciliation was triggered
+kubectl get helmrelease my-app -o jsonpath='{.metadata.annotations.reconcile\.fluxcd\.io/forceAt}'
+```
+
+## Architecture
+
+```
+┌─────────────────┐    watches    ┌─────────────────┐
+│   ConfigMap     │──────────────▶│   Controller    │
+│   (labeled)     │               │                 │
+└─────────────────┘               └─────────────────┘
+                                           │
+                                           │ patches
+                                           ▼
+                                  ┌─────────────────┐
+                                  │  HelmRelease    │
+                                  │                 │
+                                  └─────────────────┘
+                                           │
+                                           │ triggers
+                                           ▼
+                                  ┌─────────────────┐
+                                  │ FluxCD Helm     │
+                                  │ Controller      │
+                                  └─────────────────┘
+```
+
+## Annotations Reference
+
+| Annotation | Required | Description | Example |
+|------------|----------|-------------|---------|
+| `uburro.github.com/helmreleases-name` | Yes | Target HelmRelease name | `my-app` |
+| `uburro.github.com/helmreleases-namespace` | No | Target HelmRelease namespace | `production` |
+| `uburro.github.com/config-digest` | No | Last processed digest (auto-managed) | `sha256:abc123...` |
+
+## Constants Reference
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `LabelConfigMapReconcilerNameSourceKey` | `uburro.github.com/fluxcd-trigger-operator` | Required label for monitoring |
+| `AnnotationHelmReleaseNameKey` | `uburro.github.com/helmreleases-name` | HelmRelease name annotation |
+| `AnnotationHelmReleaseNamespaceKey` | `uburro.github.com/helmreleases-namespace` | HelmRelease namespace annotation |
+| `AnnotationDigistKey` | `uburro.github.com/config-digest` | Digest tracking annotation |
+| `DefaultFluxcdNamespace` | `flux-system` | Default namespace for HelmReleases |
 
 ## Contributing
-// TODO(user): Add detailed information on how you would like others to contribute to this project
 
-**NOTE:** Run `make help` for more information on all potential `make` targets
-
-More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests for new functionality
+5. Submit a pull request
 
 ## License
 
-Copyright 2025.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
+This project is licensed under the Apache License 2.0.

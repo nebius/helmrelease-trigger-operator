@@ -43,6 +43,9 @@ func NewConfigMapReconciler(client client.Client, scheme *runtime.Scheme) *Confi
 	}
 }
 
+// +kubebuilder:rbac:groups=core,resources=configmaps,verbs=get;list;watch;patch
+// +kubebuilder:rbac:groups=helm.toolkit.fluxcd.io,resources=helmreleases,verbs=get;list;watch;patch
+
 func (r *ConfigMapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	logger.Info("reconciling ConfigMap", "name", req.Name, "namespace", req.Namespace)
