@@ -2,6 +2,10 @@
 
 A Kubernetes controller that automatically triggers HelmRelease reconciliation when associated ConfigMaps are updated, enabling seamless configuration-driven GitOps workflows.
 
+## Disclaimer
+
+**Important:** This project is not affiliated with FluxCD or ControlPlaneIO-FluxCD. It is an independent operator designed to simplify deployments with FluxCD, specifically when using the `valuesFrom` feature in HelmRelease configurations. The FluxCD Trigger Operator provides additional functionality for triggering HelmRelease reconciliations based on ConfigMap updates, but it is not officially supported or endorsed by the FluxCD project or its maintainers.
+
 ## Overview
 
 The FluxCD Trigger Operator monitors ConfigMaps with specific labels and annotations, automatically triggering FluxCD HelmRelease reconciliation when configuration changes are detected. This enables dynamic configuration management where ConfigMap updates can immediately trigger application redeployments without manual intervention.
