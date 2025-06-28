@@ -43,11 +43,12 @@ import (
 	"uburro.github.com/fluxcd-trigger-operator/internal/controller"
 
 	helmv2 "github.com/fluxcd/helm-controller/api/v2"
+
+	"go.uber.org/zap/zapcore"
 )
 
 var (
-	scheme   = runtime.NewScheme()
-	setupLog = ctrl.Log.WithName("setup")
+	scheme = runtime.NewScheme()
 )
 
 type Config struct {
@@ -56,11 +57,14 @@ type Config struct {
 	metricsAddr                                      string
 	metricsCertPath, metricsCertName, metricsCertKey string
 	webhookCertPath, webhookCertName, webhookCertKey string
-	enableLeaderElection                             bool
+	logFormat                                        string
+	logLevel                                         string
 	probeAddr                                        string
+	enableLeaderElection                             bool
 	secureMetrics                                    bool
 	enableHTTP2                                      bool
-	tlsOpts                                          []func(*tls.Config)
+
+	tlsOpts []func(*tls.Config)
 }
 
 func init() {
@@ -68,6 +72,40 @@ func init() {
 	utilruntime.Must(helmv2.AddToScheme(scheme))
 
 	// +kubebuilder:scaffold:scheme
+}
+
+func getZapOpts(logFormat, logLevel string) []zap.Opts {
+	var zapOpts []zap.Opts
+
+	// Configure log format
+	if logFormat == "json" {
+		zapOpts = append(zapOpts, zap.UseDevMode(false))
+	} else {
+		zapOpts = append(zapOpts, zap.UseDevMode(true))
+	}
+
+	// Configure log level
+	var level zapcore.Level
+	switch logLevel {
+	case "debug":
+		level = zapcore.DebugLevel
+	case "info":
+		level = zapcore.InfoLevel
+	case "warn":
+		level = zapcore.WarnLevel
+	case "error":
+		level = zapcore.ErrorLevel
+	case "dpanic":
+		level = zapcore.DPanicLevel
+	case "panic":
+		level = zapcore.PanicLevel
+	case "fatal":
+		level = zapcore.FatalLevel
+	default:
+		level = zapcore.InfoLevel
+	}
+	zapOpts = append(zapOpts, zap.Level(level))
+	return zapOpts
 }
 
 // nolint:gocyclo
@@ -101,13 +139,12 @@ func main() {
 		"The name of the metrics server key file.")
 	flag.BoolVar(&config.enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
-	opts := zap.Options{
-		Development: true,
-	}
-	opts.BindFlags(flag.CommandLine)
+	flag.StringVar(&config.logFormat, "log-format", "plain", "Log format: plain or json")
+	flag.StringVar(&config.logLevel, "log-level", "info", "Log level: debug, info, warn, error, dpanic, panic, fatal")
 	flag.Parse()
-
-	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+	opts := getZapOpts(config.logFormat, config.logLevel)
+	ctrl.SetLogger(zap.New(opts...))
+	setupLog := ctrl.Log.WithName("setup")
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
@@ -251,6 +288,14 @@ func main() {
 	}
 
 	if err = controller.NewConfigMapReconciler(
+		mgr.GetClient(),
+		mgr.GetScheme(),
+	).SetupWithManager(mgr, config.MaxConcurrency, config.CacheSyncTimeout); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", controller.ConfigMapReconcilerName)
+		os.Exit(1)
+	}
+
+	if err = controller.NewSecretReconciler(
 		mgr.GetClient(),
 		mgr.GetScheme(),
 	).SetupWithManager(mgr, config.MaxConcurrency, config.CacheSyncTimeout); err != nil {

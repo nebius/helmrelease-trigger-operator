@@ -2,31 +2,22 @@ package controller
 
 import (
 	"context"
-	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	helmv2 "github.com/fluxcd/helm-controller/api/v2"
 )
 
 const (
-	ConfigMapReconcilerName               = "configmap-reconciler"
-	LabelConfigMapReconcilerNameSourceKey = "uburro.github.com/fluxcd-trigger-operator"
-	AnnotationHelmReleaseNameKey          = "uburro.github.com/helmreleases-name"
-	AnnotationHelmReleaseNamespaceKey     = "uburro.github.com/helmreleases-namespace"
-	AnnotationDigistKey                   = "uburro.github.com/config-digest"
-	DefaultFluxcdNamespace                = "flux-system"
+	ConfigMapReconcilerName = "configmap-reconciler"
 )
 
 // ConfigMapReconciler reconciles ConfigMap resources in a Kubernetes cluster.
@@ -56,8 +47,8 @@ func (r *ConfigMapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, err
 	}
 
-	hrName := configMap.GetAnnotations()[AnnotationHelmReleaseNameKey]
-	hrNamespace := configMap.GetAnnotations()[AnnotationHelmReleaseNamespaceKey]
+	hrName := configMap.GetAnnotations()[HRAnnotation]
+	hrNamespace := configMap.GetAnnotations()[NSAnnotation]
 
 	if hrName == "" {
 		logger.V(1).Info("No HelmRelease name found in ConfigMap annotations", "configMap", req.Name)
@@ -73,32 +64,56 @@ func (r *ConfigMapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		Name:      hrName,
 		Namespace: hrNamespace,
 	}, hr); err != nil {
-		logger.V(1).Error(err, "Getting HelmRelease produced an error", "helmRelease", hrName, "namespace", hrNamespace)
+		logger.V(1).Error(err, "Getting HelmRelease produced an error",
+			"helmRelease", hrName, "namespace", hrNamespace)
 		return ctrl.Result{}, err
 	}
 
-	oldDigest := configMap.GetAnnotations()[AnnotationDigistKey]
-	newDigest := hr.Status.History[0].Digest
+	if len(hr.Status.History) == 0 {
+		logger.V(1).Info("No history found in HelmRelease, skipping helmRelease patch",
+			"helmRelease", hrName, "namespace", hrNamespace)
+		return ctrl.Result{}, nil
+	}
+
+	if hr.Status.History[0].Status != "deployed" {
+		logger.V(1).Info("HelmRelease is not deployed, skipping patch", "helmRelease",
+			hrName, "namespace", hrNamespace, "status", hr.Status.History[0].Status)
+		return ctrl.Result{}, nil
+	}
+
+	oldDigest := configMap.GetAnnotations()[HashAnnotation]
+	newDigest := getDataHashCM(configMap.Data)
+
+	logger.V(1).Info("old digest", "digest", oldDigest)
+	logger.V(1).Info("new digest", "digest", newDigest)
 
 	if oldDigest == newDigest {
 		logger.V(1).Info("No changes detected in ConfigMap, skipping HelmRelease patch", "configMap", req.Name)
 		return ctrl.Result{}, nil
 	}
 
-	patchTarget := hr.DeepCopy()
+	patchTargetHR := hr.DeepCopy()
 
 	ts := time.Now().Format(time.RFC3339Nano)
-	patchTarget.Annotations[AnnotationDigistKey] = newDigest
-	patchTarget.Annotations["reconcile.fluxcd.io/forceAt"] = ts
-	patchTarget.Annotations["reconcile.fluxcd.io/requestedAt"] = ts
+	patchTargetHR.Annotations["reconcile.fluxcd.io/forceAt"] = ts
+	patchTargetHR.Annotations["reconcile.fluxcd.io/requestedAt"] = ts
 
-	patch := client.MergeFrom(hr.DeepCopy())
-
-	if err := r.Patch(ctx, patchTarget, patch); err != nil {
-		logger.Error(err, "failed to patch HelmRelease", "name", patchTarget.Name)
+	patchHR := client.MergeFrom(hr.DeepCopy())
+	if err := r.Patch(ctx, patchTargetHR, patchHR); err != nil {
+		logger.Error(err, "failed to patch HelmRelease", "name", patchTargetHR.Name)
 	}
 
-	logger.Info("patched HelmRelease with new digest", "name", patchTarget.Name, "digest", newDigest, "version", hr.Status.History[0].Version)
+	patchCM := client.MergeFrom(configMap.DeepCopy())
+	patchTargetCM := configMap.DeepCopy()
+	patchTargetCM.Annotations[HashAnnotation] = newDigest
+	if err := r.Patch(ctx, patchTargetCM, patchCM); err != nil {
+		logger.Error(err, "failed to patch HelmRelease", "name", patchTargetHR.Name)
+	}
+
+	logger.Info("patched HelmRelease with new digest",
+		"name", patchTargetHR.Name,
+		"digest", newDigest,
+		"version", hr.Status.History[0].Version)
 
 	return ctrl.Result{}, nil
 }
@@ -116,13 +131,19 @@ func (r *ConfigMapReconciler) SetupWithManager(
 
 				return isValidConfigMap(configMap)
 			},
+
 			UpdateFunc: func(e event.UpdateEvent) bool {
-				configMap, ok := e.ObjectNew.(*corev1.ConfigMap)
-				if !ok {
+				configMapOld, okOld := e.ObjectOld.(*corev1.ConfigMap)
+				configMapNew, okNew := e.ObjectNew.(*corev1.ConfigMap)
+
+				if !okOld || !okNew || !isValidConfigMap(configMapNew) {
 					return false
 				}
 
-				return isValidConfigMap(configMap)
+				oldHash := getDataHashCM(configMapOld.Data)
+				newHash := getDataHashCM(configMapNew.Data)
+
+				return oldHash != newHash
 			},
 			DeleteFunc: func(e event.DeleteEvent) bool {
 				return false
@@ -141,25 +162,8 @@ func (r *ConfigMapReconciler) SetupWithManager(
 }
 
 func isValidConfigMap(cm *corev1.ConfigMap) bool {
-	if v, ok := cm.Labels[LabelConfigMapReconcilerNameSourceKey]; ok {
+	if v, ok := cm.Labels[LabelReconcilerNameSourceKey]; ok {
 		return v == "true"
 	}
 	return false
-}
-
-var (
-	optionsInit    sync.Once
-	defaultOptions *controller.Options
-)
-
-func ControllerOptions(maxConcurrency int, cacheSyncTimeout time.Duration) controller.Options {
-	rateLimiters := workqueue.NewTypedItemExponentialFailureRateLimiter[reconcile.Request](30*time.Second, 5*time.Minute)
-	optionsInit.Do(func() {
-		defaultOptions = &controller.Options{
-			RateLimiter:             rateLimiters,
-			CacheSyncTimeout:        cacheSyncTimeout,
-			MaxConcurrentReconciles: maxConcurrency,
-		}
-	})
-	return *defaultOptions
 }
