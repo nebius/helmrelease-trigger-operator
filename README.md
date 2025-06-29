@@ -12,7 +12,7 @@ The FluxCD Trigger Operator monitors ConfigMaps with specific labels and annotat
 
 ## How It Works
 
-The operator watches for ConfigMaps labeled with `uburro.github.com/fluxcd-trigger-operator: "true"` and:
+The operator watches for ConfigMaps labeled with `github.com/uburro/fluxcd-trigger-operator: "true"` and:
 
 1. **Monitors ConfigMap Changes**: Detects create, update, and generic events on labeled ConfigMaps
 2. **Extracts HelmRelease References**: Uses annotations to identify the target HelmRelease
@@ -58,7 +58,7 @@ ConfigMaps must have the following label to be monitored by the operator:
 ```yaml
 metadata:
   labels:
-    uburro.github.com/fluxcd-trigger-operator: "true"
+    github.com/uburro/fluxcd-trigger-operator: "true"
 ```
 
 ### Required ConfigMap Annotations
@@ -104,9 +104,15 @@ spec:
         name: my-repo
       version: "1.0.0"
   values:
-    configMapRef:
-      name: my-app-config
-      namespace: default
+    valuesFrom:
+    - kind: ConfigMap
+      name: prod-env-values
+      valuesKey: values.yaml
+    - kind: Secret
+      name: prod-tls-values
+      valuesKey: crt
+      targetPath: tls.crt
+      optional: true
 ```
 
 2. **Create a monitored ConfigMap**:
@@ -118,7 +124,7 @@ metadata:
   name: my-app-config
   namespace: default
   labels:
-    uburro.github.com/fluxcd-trigger-operator: "true"
+    github.com/uburro/fluxcd-trigger-operator: "true"
   annotations:
     uburro.github.com/helmreleases-name: "my-app"
     uburro.github.com/helmreleases-namespace: "flux-system"
@@ -152,52 +158,15 @@ metadata:
   name: production-config
   namespace: app-configs
   labels:
-    uburro.github.com/fluxcd-trigger-operator: "true"
+    github.com/uburro/fluxcd-trigger-operator: "true"
   annotations:
     uburro.github.com/helmreleases-name: "production-app"
     uburro.github.com/helmreleases-namespace: "production"
 data:
-  app.properties: |
+  values.yaml: |
     environment=production
     replica.count=3
     resources.limits.memory=2Gi
-```
-
-### Multiple ConfigMaps for One HelmRelease
-
-You can have multiple ConfigMaps trigger the same HelmRelease:
-
-```yaml
-# Database config
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: db-config
-  namespace: configs
-  labels:
-    uburro.github.com/fluxcd-trigger-operator: "true"
-  annotations:
-    uburro.github.com/helmreleases-name: "my-app"
-data:
-  database.yaml: |
-    host: "db.prod.com"
-    credentials: "secret-ref"
-
----
-# Feature flags config
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: feature-config
-  namespace: configs
-  labels:
-    uburro.github.com/fluxcd-trigger-operator: "true"
-  annotations:
-    uburro.github.com/helmreleases-name: "my-app"
-data:
-  features.yaml: |
-    experimental: false
-    newUI: true
 ```
 
 ## RBAC Requirements
@@ -230,7 +199,7 @@ rules:
 kubectl logs -n fluxcd-trigger-operator-system deployment/fluxcd-trigger-operator
 
 # Check if ConfigMaps are being watched
-kubectl get configmaps -l uburro.github.com/fluxcd-trigger-operator=true -A
+kubectl get configmaps -l github.com/uburro/fluxcd-trigger-operator=true -A
 
 # Verify HelmRelease reconciliation
 kubectl get helmreleases -A
@@ -240,7 +209,7 @@ kubectl describe helmrelease my-app -n flux-system
 ### Common Issues
 
 1. **ConfigMap changes not triggering reconciliation**
-   - Verify the ConfigMap has the required label: `uburro.github.com/fluxcd-trigger-operator: "true"`
+   - Verify the ConfigMap has the required label: `github.com/uburro/fluxcd-trigger-operator: "true"`
    - Check annotations for correct HelmRelease name and namespace
    - Ensure the target HelmRelease exists
 
@@ -303,7 +272,7 @@ kubectl get helmrelease my-app -o jsonpath='{.metadata.annotations.reconcile\.fl
 
 | Constant | Value | Description |
 |----------|-------|-------------|
-| `LabelConfigMapReconcilerNameSourceKey` | `uburro.github.com/fluxcd-trigger-operator` | Required label for monitoring |
+| `LabelConfigMapReconcilerNameSourceKey` | `github.com/uburro/fluxcd-trigger-operator` | Required label for monitoring |
 | `AnnotationHelmReleaseNameKey` | `uburro.github.com/helmreleases-name` | HelmRelease name annotation |
 | `AnnotationHelmReleaseNamespaceKey` | `uburro.github.com/helmreleases-namespace` | HelmRelease namespace annotation |
 | `AnnotationDigistKey` | `uburro.github.com/config-digest` | Digest tracking annotation |

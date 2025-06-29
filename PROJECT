@@ -6,5 +6,5 @@ domain: uburro.github.com
 layout:
 - go.kubebuilder.io/v4
 projectName: fluxcd-trigger-operator
-repo: uburro.github.com/fluxcd-trigger-operator
+repo: github.com/uburro/fluxcd-trigger-operator
 version: "3"

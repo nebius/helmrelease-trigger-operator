@@ -27,7 +27,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"uburro.github.com/fluxcd-trigger-operator/test/utils"
+	"github.com/uburro/fluxcd-trigger-operator/test/utils"
 )
 
 // namespace where the project is deployed in
