@@ -55,7 +55,7 @@ The FluxCD Trigger Operator implements **autodiscovery** by scanning all HelmRel
 ### Using kubectl
 
 ```bash
-kustomize build config | kubectl apply -f
+kustomize build config/default | kubectl apply -f
 ```
 
 ### Verify Installation
