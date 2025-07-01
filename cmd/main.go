@@ -40,7 +40,7 @@ import (
 
 	// +kubebuilder:scaffold:imports
 
-	"github.com/uburro/fluxcd-trigger-operator/internal/controller"
+	"github.com/uburro/helmrelease-trigger-operator/internal/controller"
 
 	helmv2 "github.com/fluxcd/helm-controller/api/v2"
 

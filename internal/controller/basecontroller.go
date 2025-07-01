@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	LabelReconcilerNameSourceKey = "uburro.github.com/fluxcd-trigger-operator"
+	LabelReconcilerNameSourceKey = "uburro.github.com/helmrelease-trigger-operator"
 	HRNameAnnotation             = "uburro.github.com/helmreleases-name"
 	HRNSAnnotation               = "uburro.github.com/helmreleases-namespace"
 	HashAnnotation               = "uburro.github.com/config-digest"

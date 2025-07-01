@@ -1,4 +1,4 @@
-module github.com/uburro/fluxcd-trigger-operator
+module github.com/uburro/helmrelease-trigger-operator
 
 go 1.24.0
 

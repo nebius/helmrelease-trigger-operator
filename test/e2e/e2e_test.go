@@ -27,20 +27,20 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/uburro/fluxcd-trigger-operator/test/utils"
+	"github.com/uburro/helmrelease-trigger-operator/test/utils"
 )
 
 // namespace where the project is deployed in
-const namespace = "fluxcd-trigger-operator-system"
+const namespace = "helmrelease-trigger-operator-system"
 
 // serviceAccountName created for the project
-const serviceAccountName = "fluxcd-trigger-operator-controller-manager"
+const serviceAccountName = "helmrelease-trigger-operator-controller-manager"
 
 // metricsServiceName is the name of the metrics service of the project
-const metricsServiceName = "fluxcd-trigger-operator-controller-manager-metrics-service"
+const metricsServiceName = "helmrelease-trigger-operator-controller-manager-metrics-service"
 
 // metricsRoleBindingName is the name of the RBAC that will be created to allow get the metrics data
-const metricsRoleBindingName = "fluxcd-trigger-operator-metrics-binding"
+const metricsRoleBindingName = "helmrelease-trigger-operator-metrics-binding"
 
 var _ = Describe("Manager", Ordered, func() {
 	var controllerPodName string
@@ -164,7 +164,7 @@ var _ = Describe("Manager", Ordered, func() {
 		It("should ensure the metrics endpoint is serving metrics", func() {
 			By("creating a ClusterRoleBinding for the service account to allow access to metrics")
 			cmd := exec.Command("kubectl", "create", "clusterrolebinding", metricsRoleBindingName,
-				"--clusterrole=fluxcd-trigger-operator-metrics-reader",
+				"--clusterrole=helmrelease-trigger-operator-metrics-reader",
 				fmt.Sprintf("--serviceaccount=%s:%s", namespace, serviceAccountName),
 			)
 			_, err := utils.Run(cmd)

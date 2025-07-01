@@ -5,6 +5,6 @@
 domain: uburro.github.com
 layout:
 - go.kubebuilder.io/v4
-projectName: fluxcd-trigger-operator
-repo: github.com/uburro/fluxcd-trigger-operator
+projectName: helmrelease-trigger-operator
+repo: github.com/uburro/helmrelease-trigger-operator
 version: "3"

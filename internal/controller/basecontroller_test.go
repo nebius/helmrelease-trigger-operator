@@ -15,7 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	"github.com/uburro/fluxcd-trigger-operator/internal/controller"
+	"github.com/uburro/helmrelease-trigger-operator/internal/controller"
 )
 
 var _ = Describe("Controller", func() {

@@ -13,8 +13,8 @@ controllerManager:
         drop:
         - ALL
     image:
-      repository: controller
-      tag: latest
+      repository: ghcr.io/uburro/helmrelease-trigger-operator
+      tag: 0.1.0
     resources:
       limits:
         memory: 128Mi

@@ -1,18 +1,18 @@
-# FluxCD Trigger Operator
+# HelmRelease Trigger Operator
 
 A Kubernetes controller that automatically triggers HelmRelease reconciliation when associated ConfigMaps are updated, enabling seamless configuration-driven GitOps workflows.
 
 ## Disclaimer
 
-**Important:** This project is not affiliated with FluxCD or ControlPlaneIO-FluxCD. It is an independent operator designed to simplify deployments with FluxCD, specifically when using the `valuesFrom` feature in HelmRelease configurations. The FluxCD Trigger Operator provides additional functionality for triggering HelmRelease reconciliations based on ConfigMap updates, but it is not officially supported or endorsed by the FluxCD project or its maintainers.
+**Important:** This project is not affiliated with FluxCD or ControlPlaneIO-FluxCD. It is an independent operator designed to simplify deployments with FluxCD, specifically when using the `valuesFrom` feature in HelmRelease configurations. The HelmRelease Trigger Operator provides additional functionality for triggering HelmRelease reconciliations based on ConfigMap updates, but it is not officially supported or endorsed by the FluxCD project or its maintainers.
 
 ## Overview
 
-The FluxCD Trigger Operator monitors ConfigMaps with specific labels and annotations, automatically triggering FluxCD HelmRelease reconciliation when configuration changes are detected. This enables dynamic configuration management where ConfigMap updates can immediately trigger application redeployments without manual intervention.
+The HelmRelease Trigger Operator monitors ConfigMaps with specific labels and annotations, automatically triggering FluxCD HelmRelease reconciliation when configuration changes are detected. This enables dynamic configuration management where ConfigMap updates can immediately trigger application redeployments without manual intervention.
 
 ## How It Works
 
-The operator watches for ConfigMaps labeled with `github.com/uburro/fluxcd-trigger-operator: "true"` and:
+The operator watches for ConfigMaps labeled with `github.com/uburro/helmrelease-trigger-operator: "true"` and:
 
 1. **Monitors ConfigMap Changes**: Detects create, update, and generic events on labeled ConfigMaps
 2. **Extracts HelmRelease References**: Uses annotations to identify the target HelmRelease
@@ -31,13 +31,13 @@ The operator watches for ConfigMaps labeled with `github.com/uburro/fluxcd-trigg
 
 ### Autodiscovery
 
-The FluxCD Trigger Operator implements **autodiscovery** by scanning all HelmReleases in the cluster and automatically labeling those that use the `valuesFrom` feature. This ensures that HelmReleases relying on external ConfigMaps or Secrets for their values are dynamically included in the operator's reconciliation workflow.
+The HelmRelease Trigger Operator implements **autodiscovery** by scanning all HelmReleases in the cluster and automatically labeling those that use the `valuesFrom` feature. This ensures that HelmReleases relying on external ConfigMaps or Secrets for their values are dynamically included in the operator's reconciliation workflow.
 
 #### How Autodiscovery Works:
 1. **HelmRelease Scanning**: The operator scans all HelmReleases in the cluster.
 2. **`valuesFrom` Detection**: It checks if the HelmRelease configuration includes the `valuesFrom` field, which indicates dependency on external resources like ConfigMaps or Secrets.
 3. **Automatic Labeling**: For HelmReleases using `valuesFrom`, the operator adds the following labels:
-   - `"uburro.github.com/fluxcd-trigger-operator": "true"`: Marks the HelmRelease as managed by the operator.
+   - `"uburro.github.com/helmrelease-trigger-operator": "true"`: Marks the HelmRelease as managed by the operator.
    - `"uburro.github.com/helmreleases-namespace": "<namespace>"`: Specifies the namespace of the HelmRelease.
    - `"uburro.github.com/helmreleases-name": "<name>"`: Specifies the name of the HelmRelease.
 
@@ -57,12 +57,17 @@ The FluxCD Trigger Operator implements **autodiscovery** by scanning all HelmRel
 ```bash
 kustomize build config/default | kubectl apply -f
 ```
+or
+
+```
+helm install hrto oci://ghcr.io/uburro/helmrelease-trigger-operator
+```
 
 ### Verify Installation
 
 ```bash
-kubectl get pods -n fluxcd-trigger-operator-system
-kubectl logs -n fluxcd-trigger-operator-system deployment/fluxcd-trigger-operator
+kubectl get pods -n helmrelease-trigger-operator-system
+kubectl logs -n helmrelease-trigger-operator-system deployment/helmrelease-trigger-operator
 ```
 
 ## Configuration
@@ -74,7 +79,7 @@ ConfigMaps must have the following label to be monitored by the operator:
 ```yaml
 metadata:
   labels:
-    github.com/uburro/fluxcd-trigger-operator: "true"
+    github.com/uburro/helmrelease-trigger-operator: "true"
 ```
 
 ### Required ConfigMap Annotations
@@ -140,7 +145,7 @@ metadata:
   name: my-app-config
   namespace: default
   labels:
-    github.com/uburro/fluxcd-trigger-operator: "true"
+    github.com/uburro/helmrelease-trigger-operator: "true"
   annotations:
     uburro.github.com/helmreleases-name: "my-app"
     uburro.github.com/helmreleases-namespace: "flux-system"
@@ -174,7 +179,7 @@ metadata:
   name: production-config
   namespace: app-configs
   labels:
-    github.com/uburro/fluxcd-trigger-operator: "true"
+    github.com/uburro/helmrelease-trigger-operator: "true"
   annotations:
     uburro.github.com/helmreleases-name: "production-app"
     uburro.github.com/helmreleases-namespace: "production"
@@ -193,7 +198,7 @@ The operator requires the following Kubernetes permissions:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: fluxcd-trigger-operator
+  name: helmrelease-trigger-operator
 rules:
 # ConfigMap permissions
 - apiGroups: [""]
@@ -212,10 +217,10 @@ rules:
 
 ```bash
 # View operator logs
-kubectl logs -n fluxcd-trigger-operator-system deployment/fluxcd-trigger-operator
+kubectl logs -n helmrelease-trigger-operator-system deployment/helmrelease-trigger-operator
 
 # Check if ConfigMaps are being watched
-kubectl get configmaps -l github.com/uburro/fluxcd-trigger-operator=true -A
+kubectl get configmaps -l github.com/uburro/helmrelease-trigger-operator=true -A
 
 # Verify HelmRelease reconciliation
 kubectl get helmreleases -A
@@ -225,7 +230,7 @@ kubectl describe helmrelease my-app -n flux-system
 ### Common Issues
 
 1. **ConfigMap changes not triggering reconciliation**
-   - Verify the ConfigMap has the required label: `github.com/uburro/fluxcd-trigger-operator: "true"`
+   - Verify the ConfigMap has the required label: `github.com/uburro/helmrelease-trigger-operator: "true"`
    - Check annotations for correct HelmRelease name and namespace
    - Ensure the target HelmRelease exists
 
@@ -247,7 +252,7 @@ kubectl get configmap my-app-config -o yaml
 kubectl get helmrelease my-app -o jsonpath='{.status.history[0]}'
 
 # Monitor operator events
-kubectl get events -n fluxcd-trigger-operator-system
+kubectl get events -n helmrelease-trigger-operator-system
 
 # Check if reconciliation was triggered
 kubectl get helmrelease my-app -o jsonpath='{.metadata.annotations.reconcile\.fluxcd\.io/forceAt}'
@@ -288,7 +293,7 @@ kubectl get helmrelease my-app -o jsonpath='{.metadata.annotations.reconcile\.fl
 
 | Constant | Value | Description |
 |----------|-------|-------------|
-| `LabelConfigMapReconcilerNameSourceKey` | `github.com/uburro/fluxcd-trigger-operator` | Required label for monitoring |
+| `LabelConfigMapReconcilerNameSourceKey` | `github.com/uburro/helmrelease-trigger-operator` | Required label for monitoring |
 | `AnnotationHelmReleaseNameKey` | `uburro.github.com/helmreleases-name` | HelmRelease name annotation |
 | `AnnotationHelmReleaseNamespaceKey` | `uburro.github.com/helmreleases-namespace` | HelmRelease namespace annotation |
 | `AnnotationDigistKey` | `uburro.github.com/config-digest` | Digest tracking annotation |
