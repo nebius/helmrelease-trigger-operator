@@ -100,7 +100,7 @@ func (r *BaseReconciler) ReconcileResource(
 		return ctrl.Result{}, nil
 	}
 
-	newDigest := r.getNewDigest(resource)
+	newDigest := r.GetNewDigest(resource)
 
 	logger.V(1).Info("old digest", "digest", oldDigest)
 	logger.V(1).Info("new digest", "digest", newDigest)
@@ -152,7 +152,7 @@ func (r *BaseReconciler) IsDeployed(hr *helmv2.HelmRelease) bool {
 	return len(hr.Status.History) > 0 && hr.Status.History[0].Status == "deployed"
 }
 
-func (r *BaseReconciler) getNewDigest(resource client.Object) string {
+func (r *BaseReconciler) GetNewDigest(resource client.Object) string {
 	switch obj := resource.(type) {
 	case *corev1.Secret:
 		return getDataHashSecret(obj.Data)

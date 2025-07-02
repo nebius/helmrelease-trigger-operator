@@ -140,7 +140,7 @@ func main() {
 		"The name of the metrics server key file.")
 	flag.BoolVar(&config.enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
-	flag.BoolVar(&config.enableHRAutodiscovery, "enable-hr-autodiscovery", false,
+	flag.BoolVar(&config.enableHRAutodiscovery, "enable-hr-autodiscovery", true,
 		"If set, the HelmRelease controller will automatically discover and reconcile HelmRelease resources "+
 			"that reference ConfigMaps or Secrets via the 'valuesFrom' field. "+
 			"Disabling this will prevent the operator from automatically managing HelmRelease resources "+

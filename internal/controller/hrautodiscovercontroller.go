@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"time"
 
 	helmv2 "github.com/fluxcd/helm-controller/api/v2"
@@ -22,15 +23,16 @@ const (
 )
 
 type HRAutodicoverReconciler struct {
-	client.Client
-	Scheme *runtime.Scheme
+	BaseReconciler
 }
 
 // NewHRAutodicoverReconciler creates a new HRAutodicoverReconciler instance.
 func NewHRAutodicoverReconciler(client client.Client, scheme *runtime.Scheme) *HRAutodicoverReconciler {
 	return &HRAutodicoverReconciler{
-		Client: client,
-		Scheme: scheme,
+		BaseReconciler: BaseReconciler{
+			Client: client,
+			Scheme: scheme,
+		},
 	}
 }
 
@@ -48,7 +50,7 @@ func (r *HRAutodicoverReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	if hr.Spec.ValuesFrom != nil {
 		for _, valueFrom := range hr.Spec.ValuesFrom {
-			if err := r.processValueFrom(ctx, &hr, valueFrom); err != nil {
+			if err := r.ReconcileResource(ctx, &hr, valueFrom); err != nil {
 				if client.IgnoreNotFound(err) == nil {
 					log.Info("Resource not found, skipping", "kind", valueFrom.Kind, "name", valueFrom.Name, "namespace", hr.Namespace)
 					continue
@@ -56,53 +58,63 @@ func (r *HRAutodicoverReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 				log.Error(err, "Failed to process valuesFrom", "kind", valueFrom.Kind, "name", valueFrom.Name, "namespace", hr.Namespace)
 				return ctrl.Result{}, err
 			}
+			log.Info("Successfully reconciled resource for autodiscovery",
+				"kind", valueFrom.Kind,
+				"name", valueFrom.Name,
+				"namespace", hr.Namespace)
 		}
 	}
 
 	return ctrl.Result{}, nil
 }
 
-func (r *HRAutodicoverReconciler) processValueFrom(ctx context.Context, hr *helmv2.HelmRelease, valueFrom helmv2.ValuesReference) error {
-	namespace := hr.Namespace
+func (r *HRAutodicoverReconciler) ReconcileResource(ctx context.Context, hr *helmv2.HelmRelease, valueFrom helmv2.ValuesReference) error {
+	log := log.FromContext(ctx)
+	log.Info("Reconciling resource for autodiscovery",
+		"kind", valueFrom.Kind,
+		"name", valueFrom.Name,
+		"namespace", hr.Namespace)
+
+	var resource client.Object
+	switch valueFrom.Kind {
+	case "ConfigMap":
+		resource = &corev1.ConfigMap{}
+	case "Secret":
+		resource = &corev1.Secret{}
+	default:
+		log.Error(fmt.Errorf("unsupported kind: %s", valueFrom.Kind),
+			"Failed to reconcile resource for autodiscovery")
+		return nil
+	}
+
+	objRef := &corev1.ObjectReference{
+		Name:      valueFrom.Name,
+		Namespace: hr.Namespace,
+	}
+
+	if err := r.Get(ctx, types.NamespacedName{
+		Name:      objRef.Name,
+		Namespace: objRef.Namespace,
+	}, resource); err != nil {
+		return err
+	}
 
 	annotations := map[string]string{
 		HRNameAnnotation: hr.Name,
-		HRNSAnnotation:   namespace,
+		HRNSAnnotation:   hr.Namespace,
+		HashAnnotation:   r.GetNewDigest(resource),
 	}
 
 	labels := map[string]string{
 		LabelReconcilerNameSourceKey: "true",
 	}
 
-	obj := &corev1.ObjectReference{
-		Kind:      valueFrom.Kind,
-		Name:      valueFrom.Name,
-		Namespace: namespace,
-	}
-
-	return r.addAnnotationsAndLabel(ctx, obj, annotations, labels)
+	return r.addAnnotationsAndLabel(ctx, resource, annotations, labels)
 }
 
 func (r *HRAutodicoverReconciler) addAnnotationsAndLabel(
-	ctx context.Context, obj *corev1.ObjectReference, annotations, labels map[string]string) error {
-
-	var resource client.Object
-
-	switch obj.Kind {
-	case "ConfigMap":
-		resource = &corev1.ConfigMap{}
-	case "Secret":
-		resource = &corev1.Secret{}
-	default:
-		return fmt.Errorf("unsupported resource kind: %s", obj.Kind)
-	}
-
-	if err := r.Get(ctx, types.NamespacedName{
-		Name:      obj.Name,
-		Namespace: obj.Namespace,
-	}, resource); err != nil {
-		return err
-	}
+	ctx context.Context, resource client.Object, annotations, labels map[string]string) error {
+	log := log.FromContext(ctx).V(1)
 
 	if resource.GetAnnotations() == nil {
 		resource.SetAnnotations(make(map[string]string))
@@ -127,10 +139,14 @@ func (r *HRAutodicoverReconciler) addAnnotationsAndLabel(
 		}
 	}
 
-	if updatedAnnotations && updatedLabels {
-		if err := r.Update(ctx, resource); err != nil {
+	if updatedAnnotations || updatedLabels {
+		if err := r.Patch(ctx, resource, client.MergeFrom(resource.DeepCopyObject().(client.Object))); err != nil {
 			return err
 		}
+		log.Info("Updated resource with annotations and labels for autodiscovery",
+			"kind", resource.GetObjectKind().GroupVersionKind().Kind,
+			"name", resource.GetName(),
+			"namespace", resource.GetNamespace())
 	}
 
 	return nil
@@ -147,7 +163,13 @@ func (r *HRAutodicoverReconciler) SetupWithManager(mgr ctrl.Manager,
 				return false
 			},
 			UpdateFunc: func(e event.UpdateEvent) bool {
-				return true
+				oldHR, oldOk := e.ObjectOld.(*helmv2.HelmRelease)
+				newHR, newOk := e.ObjectNew.(*helmv2.HelmRelease)
+
+				if !oldOk || !newOk {
+					return false
+				}
+				return !reflect.DeepEqual(oldHR.Spec.ValuesFrom, newHR.Spec.ValuesFrom)
 			},
 			GenericFunc: func(e event.GenericEvent) bool {
 				return false
