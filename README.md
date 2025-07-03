@@ -285,7 +285,7 @@ kubectl get helmrelease my-app -o jsonpath='{.metadata.annotations.reconcile\.fl
 
 | Annotation | Required | Description | Example |
 |------------|----------|-------------|---------|
-| `uburro.github.com/helmreleases-name` | Yes | Target HelmRelease name | `my-app` |
+| `uburro.github.com/helmreleases-name` | Yes | Target HelmRelease name | `my-hr1,my-hr2` |
 | `uburro.github.com/helmreleases-namespace` | No | Target HelmRelease namespace | `production` |
 | `uburro.github.com/config-digest` | No | Last processed digest (auto-managed) | `sha256:abc123...` |
 
@@ -293,10 +293,10 @@ kubectl get helmrelease my-app -o jsonpath='{.metadata.annotations.reconcile\.fl
 
 | Constant | Value | Description |
 |----------|-------|-------------|
-| `LabelConfigMapReconcilerNameSourceKey` | `github.com/uburro/helmrelease-trigger-operator` | Required label for monitoring |
-| `AnnotationHelmReleaseNameKey` | `uburro.github.com/helmreleases-name` | HelmRelease name annotation |
-| `AnnotationHelmReleaseNamespaceKey` | `uburro.github.com/helmreleases-namespace` | HelmRelease namespace annotation |
-| `AnnotationDigistKey` | `uburro.github.com/config-digest` | Digest tracking annotation |
+| `LabelReconcilerNameSourceKey` | `uburro.github.com/helmrelease-trigger-operator` | Required label for monitoring |
+| `HRNameAnnotation` | `uburro.github.com/helmreleases-name` | HelmRelease name annotation |
+| `HRNSAnnotation` | `uburro.github.com/helmreleases-namespace` | HelmRelease namespace annotation |
+| `HashAnnotation` | `uburro.github.com/config-digest` | Digest tracking annotation |
 | `DefaultFluxcdNamespace` | `flux-system` | Default namespace for HelmReleases |
 
 ## Contributing

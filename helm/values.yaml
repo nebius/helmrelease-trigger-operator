@@ -14,17 +14,17 @@ controllerManager:
         - ALL
     image:
       repository: ghcr.io/uburro/helmrelease-trigger-operator
-      tag: 0.1.0
-    resources:
-      limits:
-        memory: 128Mi
-      requests:
-        cpu: 100m
-        memory: 64Mi
+      tag: 0.2.0
+    limits:
+      memory: 128Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    resources: null
   replicas: 1
-  serviceAccount:
+  serviceAccount: 
     annotations: {}
-kubernetesClusterDomain: cluster.local
+fullnameOverride: helmrelease-trigger
 metricsService:
   ports:
   - name: https
@@ -32,3 +32,4 @@ metricsService:
     protocol: TCP
     targetPort: 8443
   type: ClusterIP
+kubernetesClusterDomain: cluster.local

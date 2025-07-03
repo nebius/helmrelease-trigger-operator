@@ -8,8 +8,6 @@ metadata:
 spec:
   type: {{ .Values.metricsService.type }}
   selector:
-    app.kubernetes.io/name: helmrelease-trigger-operator
-    control-plane: controller-manager
   {{- include "helm.selectorLabels" . | nindent 4 }}
   ports:
 	{{- .Values.metricsService.ports | toYaml | nindent 2 }}
