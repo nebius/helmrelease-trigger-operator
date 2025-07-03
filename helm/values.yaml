@@ -12,15 +12,18 @@ controllerManager:
       capabilities:
         drop:
         - ALL
+      runAsNonRoot: true
+      runAsUser: 65534
+      runAsGroup: 65534
     image:
       repository: ghcr.io/uburro/helmrelease-trigger-operator
       tag: 0.2.0
-    limits:
-      memory: 128Mi
-    requests:
-      cpu: 100m
-      memory: 128Mi
-    resources: null
+    resources: 
+      limits:
+        memory: 128Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
   replicas: 1
   serviceAccount: 
     annotations: {}
