@@ -2,396 +2,399 @@ package controller_test
 
 import (
 	"context"
-	"time"
+	"testing"
 
-	helmv2 "github.com/fluxcd/helm-controller/api/v2"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	"github.com/uburro/helmrelease-trigger-operator/internal/controller"
+	"github.com/stretchr/testify/assert"
+	. "github.com/uburro/helmrelease-trigger-operator/internal/controller"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 )
 
-var _ = Describe("Controller", func() {
-	var (
-		reconciler      *controller.BaseReconciler
-		fakeClient      client.Client
-		ctx             context.Context
-		scheme          *runtime.Scheme
-		testNamespace   = "test-namespace"
-		fluxNamespace   = "flux-system"
-		testConfigMap   *corev1.ConfigMap
-		testSecret      *corev1.Secret
-		testHelmRelease *helmv2.HelmRelease
-	)
+func TestExtractFromAnnotations(t *testing.T) {
 
-	BeforeEach(func() {
-		ctx = context.Background()
-		scheme = runtime.NewScheme()
-		Expect(corev1.AddToScheme(scheme)).To(Succeed())
-		Expect(helmv2.AddToScheme(scheme)).To(Succeed())
-
-		fakeClient = fake.NewClientBuilder().WithScheme(scheme).Build()
-		reconciler = &controller.BaseReconciler{
-			Client: fakeClient,
-			Scheme: scheme,
-		}
-
-		testHelmRelease = &helmv2.HelmRelease{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-helm-release",
-				Namespace: fluxNamespace,
+	tests := []struct {
+		name           string
+		annotations    map[string]string
+		expectedHRName []string
+		expectedNS     string
+		expectedDigest string
+	}{
+		{
+			name: "All annotations present",
+			annotations: map[string]string{
+				HRNSAnnotation:   "custom-namespace",
+				HRNameAnnotation: "hr1,hr2,hr3",
+				HashAnnotation:   "digest123",
 			},
-			Status: helmv2.HelmReleaseStatus{
-				History: helmv2.Snapshots{
-					{
-						Version: 1,
-						Status:  "deployed",
-						Digest:  "old-digest",
-					},
+			expectedHRName: []string{"hr1", "hr2", "hr3"},
+			expectedNS:     "custom-namespace",
+			expectedDigest: "digest123",
+		},
+		{
+			name: "Missing HRNSAnnotation",
+			annotations: map[string]string{
+				HRNameAnnotation: "hr1,hr2",
+				HashAnnotation:   "digest456",
+			},
+			expectedHRName: []string{"hr1", "hr2"},
+			expectedNS:     DefaultFluxcdNamespace,
+			expectedDigest: "digest456",
+		},
+		{
+			name: "Missing HRNameAnnotation",
+			annotations: map[string]string{
+				HRNSAnnotation: "custom-namespace",
+				HashAnnotation: "digest789",
+			},
+			expectedHRName: []string{""},
+			expectedNS:     "custom-namespace",
+			expectedDigest: "digest789",
+		},
+		{
+			name:           "No annotations",
+			annotations:    map[string]string{},
+			expectedHRName: []string{""},
+			expectedNS:     DefaultFluxcdNamespace,
+			expectedDigest: "",
+		},
+		{
+			name: "HRNameAnnotation with single value",
+			annotations: map[string]string{
+				HRNSAnnotation:   "custom-namespace",
+				HRNameAnnotation: "hr1",
+				HashAnnotation:   "digest000",
+			},
+			expectedHRName: []string{"hr1"},
+			expectedNS:     "custom-namespace",
+			expectedDigest: "digest000",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Arrange
+			resource := &unstructured.Unstructured{}
+			resource.SetAnnotations(tt.annotations)
+
+			r := &BaseReconciler{}
+
+			// Act
+			listHRName, hrNamespace, oldDigest := r.ExtractFromAnnotations(resource)
+
+			// Assert
+			assert.Equal(t, tt.expectedHRName, listHRName)
+			assert.Equal(t, tt.expectedNS, hrNamespace)
+			assert.Equal(t, tt.expectedDigest, oldDigest)
+		})
+	}
+}
+
+func TestGetOrGenerateAnnotations(t *testing.T) {
+	r := &BaseReconciler{}
+
+	tests := []struct {
+		name                string
+		existingAnnotations map[string]string
+		hrNameAnnotation    string
+		ns                  string
+		hrName              string
+		expectedAnnotations map[string]string
+	}{
+		{
+			name:                "No existing annotations",
+			existingAnnotations: nil,
+			hrNameAnnotation:    HRNameAnnotation,
+			ns:                  "namespace1",
+			hrName:              "hr1",
+			expectedAnnotations: map[string]string{
+				HRNameAnnotation: "hr1",
+				HRNSAnnotation:   "namespace1",
+				HashAnnotation:   "dccb0d0c",
+			},
+		},
+		{
+			name: "Existing annotations without HRNameAnnotation",
+			existingAnnotations: map[string]string{
+				HRNSAnnotation: "namespace1",
+			},
+			hrNameAnnotation: HRNameAnnotation,
+			ns:               "namespace2",
+			hrName:           "hr2",
+			expectedAnnotations: map[string]string{
+				HRNameAnnotation: "hr2",
+				HRNSAnnotation:   "namespace2",
+				HashAnnotation:   "dccb0d0c",
+			},
+		},
+		{
+			name: "Existing HRNameAnnotation without duplicate",
+			existingAnnotations: map[string]string{
+				HRNameAnnotation: "hr1",
+				HRNSAnnotation:   "namespace1",
+			},
+			hrNameAnnotation: HRNameAnnotation,
+			ns:               "namespace1",
+			hrName:           "hr2",
+			expectedAnnotations: map[string]string{
+				HRNameAnnotation: "hr1,hr2",
+				HRNSAnnotation:   "namespace1",
+				HashAnnotation:   "dccb0d0c",
+			},
+		},
+		{
+			name: "Existing HRNameAnnotation with duplicate",
+			existingAnnotations: map[string]string{
+				HRNameAnnotation: "hr1",
+				HRNSAnnotation:   "namespace1",
+			},
+			hrNameAnnotation: HRNameAnnotation,
+			ns:               "namespace1",
+			hrName:           "hr1",
+			expectedAnnotations: map[string]string{
+				HRNameAnnotation: "hr1",
+				HRNSAnnotation:   "namespace1",
+				HashAnnotation:   "dccb0d0c",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resource := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-resource",
 				},
-			},
-		}
-
-		testConfigMap = &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-configmap",
-				Namespace: testNamespace,
-				Annotations: map[string]string{
-					controller.HRNameAnnotation: "test-helm-release",
-					controller.HRNSAnnotation:   fluxNamespace,
-					controller.HashAnnotation:   "old-hash",
+				Data: map[string]string{
+					"key": "value",
 				},
-			},
-			Data: map[string]string{
-				"key1": "value1",
-				"key2": "value2",
-			},
-		}
+			}
+			resource.SetAnnotations(tt.existingAnnotations)
 
-		testSecret = &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-secret",
-				Namespace: testNamespace,
-				Annotations: map[string]string{
-					controller.HRNameAnnotation: "test-helm-release",
-					controller.HRNSAnnotation:   fluxNamespace,
-					controller.HashAnnotation:   "old-hash",
-				},
-			},
-			Data: map[string][]byte{
-				"username": []byte("admin"),
-				"password": []byte("secret"),
-			},
-		}
-	})
+			updatedAnnotations := r.GetOrGenerateAnnotations(resource, tt.hrNameAnnotation, tt.ns, tt.hrName)
 
-	Describe("ControllerOptions", func() {
-		It("should return controller options with correct configuration", func() {
-			maxConcurrency := 5
-			cacheSyncTimeout := 30 * time.Second
-
-			options := controller.ControllerOptions(maxConcurrency, cacheSyncTimeout)
-
-			Expect(options.MaxConcurrentReconciles).To(Equal(maxConcurrency))
-			Expect(options.CacheSyncTimeout).To(Equal(cacheSyncTimeout))
-			Expect(options.RateLimiter).NotTo(BeNil())
+			assert.Equal(t, tt.expectedAnnotations, updatedAnnotations)
 		})
+	}
+}
 
-		It("should return the same options on subsequent calls (singleton pattern)", func() {
-			options1 := controller.ControllerOptions(5, 30*time.Second)
-			options2 := controller.ControllerOptions(10, 60*time.Second)
+func TestAddAnnotationsAndLabel(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	r := &BaseReconciler{
+		Client: fakeClient,
+	}
 
-			Expect(options1.MaxConcurrentReconciles).To(Equal(options2.MaxConcurrentReconciles))
-			Expect(options1.CacheSyncTimeout).To(Equal(options2.CacheSyncTimeout))
+	tests := []struct {
+		name                string
+		existingAnnotations map[string]string
+		existingLabels      map[string]string
+		newAnnotations      map[string]string
+		newLabels           map[string]string
+		expectedAnnotations map[string]string
+		expectedLabels      map[string]string
+	}{
+		{
+			name:                "Add new annotations and labels",
+			existingAnnotations: nil,
+			existingLabels:      nil,
+			newAnnotations:      map[string]string{"annotation1": "value1"},
+			newLabels:           map[string]string{"label1": "value1"},
+			expectedAnnotations: map[string]string{"annotation1": "value1"},
+			expectedLabels:      map[string]string{"label1": "value1"},
+		},
+		{
+			name:                "Update existing annotations and labels",
+			existingAnnotations: map[string]string{"annotation1": "oldValue"},
+			existingLabels:      map[string]string{"label1": "oldValue"},
+			newAnnotations:      map[string]string{"annotation1": "newValue"},
+			newLabels:           map[string]string{"label1": "newValue"},
+			expectedAnnotations: map[string]string{"annotation1": "newValue"},
+			expectedLabels:      map[string]string{"label1": "newValue"},
+		},
+		{
+			name:                "No changes to annotations and labels",
+			existingAnnotations: map[string]string{"annotation1": "value1"},
+			existingLabels:      map[string]string{"label1": "value1"},
+			newAnnotations:      map[string]string{"annotation1": "value1"},
+			newLabels:           map[string]string{"label1": "value1"},
+			expectedAnnotations: map[string]string{"annotation1": "value1"},
+			expectedLabels:      map[string]string{"label1": "value1"},
+		},
+		{
+			name:                "Add annotations without labels",
+			existingAnnotations: nil,
+			existingLabels:      map[string]string{"label1": "value1"},
+			newAnnotations:      map[string]string{"annotation1": "value1"},
+			newLabels:           nil,
+			expectedAnnotations: map[string]string{"annotation1": "value1"},
+			expectedLabels:      map[string]string{"label1": "value1"},
+		},
+		{
+			name:                "Add labels without annotations",
+			existingAnnotations: map[string]string{"annotation1": "value1"},
+			existingLabels:      nil,
+			newAnnotations:      nil,
+			newLabels:           map[string]string{"label1": "value1"},
+			expectedAnnotations: map[string]string{"annotation1": "value1"},
+			expectedLabels:      map[string]string{"label1": "value1"},
+		},
+		{
+			name:                "Add multiple annotations",
+			existingAnnotations: nil,
+			existingLabels:      nil,
+			newAnnotations: map[string]string{
+				"annotation1": "value1", "annotation2": "value2"},
+			newLabels: map[string]string{"label1": "value1"},
+			expectedAnnotations: map[string]string{
+				"annotation1": "value1", "annotation2": "value2"},
+			expectedLabels: map[string]string{"label1": "value1"},
+		},
+		{
+			name: "Update multiple existing annotations",
+			existingAnnotations: map[string]string{
+				"annotation1": "oldValue1", "annotation2": "oldValue2"},
+			existingLabels: map[string]string{"label1": "oldValue"},
+			newAnnotations: map[string]string{
+				"annotation3": "newValue3"},
+			newLabels: map[string]string{"label1": "newValue"},
+			expectedAnnotations: map[string]string{
+				"annotation1": "oldValue1", "annotation2": "oldValue2", "annotation3": "newValue3"},
+			expectedLabels: map[string]string{"label1": "newValue"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmName := "test-configmap"
+			cm := &corev1.ConfigMap{}
+			err := fakeClient.Get(context.TODO(), types.NamespacedName{
+				Name:      cmName,
+				Namespace: "default",
+			}, cm)
+			if err == nil {
+				err = fakeClient.Delete(context.TODO(), cm)
+			}
+			if err != nil && !apierrors.IsNotFound(err) {
+				assert.NoError(t, err)
+			}
+
+			resource := &corev1.ConfigMap{}
+			resource.SetName(cmName)
+			resource.SetNamespace("default")
+			resource.SetAnnotations(tt.existingAnnotations)
+			resource.SetLabels(tt.existingLabels)
+
+			err = fakeClient.Create(context.TODO(), resource)
+			assert.NoError(t, err)
+
+			err = r.AddAnnotationsAndLabel(context.TODO(), resource, tt.newAnnotations, tt.newLabels)
+
+			assert.NoError(t, err)
+
+			updatedResource := &corev1.ConfigMap{}
+			err = fakeClient.Get(context.TODO(), types.NamespacedName{
+				Name:      cmName,
+				Namespace: "default",
+			}, updatedResource)
+			assert.NoError(t, err)
+
+			assert.Equal(t, tt.expectedAnnotations, updatedResource.GetAnnotations())
+
+			assert.Equal(t, tt.expectedLabels, updatedResource.GetLabels())
 		})
-	})
+	}
+}
 
-	Describe("ExtractFromAnnotations", func() {
-		It("should extract HelmRelease name, namespace and digest from annotations", func() {
-			hrName, hrNamespace, digest := reconciler.ExtractFromAnnotations(testConfigMap)
+func TestRemoveHRNameFromAnnotations(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
 
-			Expect(hrName).To(Equal("test-helm-release"))
-			Expect(hrNamespace).To(Equal(fluxNamespace))
-			Expect(digest).To(Equal("old-hash"))
+	r := &BaseReconciler{
+		Client: fakeClient,
+	}
+
+	tests := []struct {
+		name                string
+		existingAnnotations map[string]string
+		hrNameToRemove      string
+		expectedAnnotations map[string]string
+	}{
+		{
+			name:                "Remove single HR name from annotations",
+			existingAnnotations: map[string]string{HRNameAnnotation: "hr1"},
+			hrNameToRemove:      "hr1",
+			expectedAnnotations: map[string]string(nil),
+		},
+		{
+			name:                "Remove one HR name from a list",
+			existingAnnotations: map[string]string{HRNameAnnotation: "hr1,hr2,hr3"},
+			hrNameToRemove:      "hr2",
+			expectedAnnotations: map[string]string{HRNameAnnotation: "hr1,hr3"},
+		},
+		{
+			name:                "HR name not found in annotations",
+			existingAnnotations: map[string]string{HRNameAnnotation: "hr1,hr2"},
+			hrNameToRemove:      "hr3",
+			expectedAnnotations: map[string]string{HRNameAnnotation: "hr1,hr2"},
+		},
+		{
+			name:                "No annotations present",
+			existingAnnotations: nil,
+			hrNameToRemove:      "hr1",
+			expectedAnnotations: nil,
+		},
+		{
+			name:                "Remove last HR name from a list",
+			existingAnnotations: map[string]string{HRNameAnnotation: "hr1"},
+			hrNameToRemove:      "hr1",
+			expectedAnnotations: map[string]string(nil),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmName := "test-configmap"
+			cm := &corev1.ConfigMap{}
+			err := fakeClient.Get(context.TODO(), types.NamespacedName{
+				Name:      cmName,
+				Namespace: "default",
+			}, cm)
+			if err == nil {
+				err = fakeClient.Delete(context.TODO(), cm)
+			}
+			if err != nil && !apierrors.IsNotFound(err) {
+				assert.NoError(t, err)
+			}
+
+			resource := &corev1.ConfigMap{}
+			resource.SetName(cmName)
+			resource.SetNamespace("default")
+			resource.SetAnnotations(tt.existingAnnotations)
+
+			err = fakeClient.Create(context.TODO(), resource)
+			assert.NoError(t, err)
+
+			err = r.RemoveHRNameFromAnnotations(context.TODO(), resource, tt.hrNameToRemove)
+
+			assert.NoError(t, err)
+
+			updatedResource := &corev1.ConfigMap{}
+			err = fakeClient.Get(context.TODO(), client.ObjectKey{
+				Name:      cmName,
+				Namespace: "default",
+			}, updatedResource)
+			assert.NoError(t, err)
+
+			assert.Equal(t, tt.expectedAnnotations, updatedResource.GetAnnotations())
 		})
-
-		It("should use default namespace when namespace annotation is missing", func() {
-			testConfigMap.Annotations[controller.HRNSAnnotation] = ""
-
-			hrName, hrNamespace, digest := reconciler.ExtractFromAnnotations(testConfigMap)
-
-			Expect(hrName).To(Equal("test-helm-release"))
-			Expect(hrNamespace).To(Equal(controller.DefaultFluxcdNamespace))
-			Expect(digest).To(Equal("old-hash"))
-		})
-
-		It("should handle missing annotations gracefully", func() {
-			testConfigMap.Annotations = nil
-
-			hrName, hrNamespace, digest := reconciler.ExtractFromAnnotations(testConfigMap)
-
-			Expect(hrName).To(BeEmpty())
-			Expect(hrNamespace).To(Equal(controller.DefaultFluxcdNamespace))
-			Expect(digest).To(BeEmpty())
-		})
-	})
-
-	Describe("GetHelmRelease", func() {
-		BeforeEach(func() {
-			Expect(fakeClient.Create(ctx, testHelmRelease)).To(Succeed())
-		})
-
-		It("should retrieve HelmRelease successfully", func() {
-			hr, err := reconciler.GetHelmRelease(ctx, "test-helm-release", fluxNamespace)
-
-			Expect(err).NotTo(HaveOccurred())
-			Expect(hr.Name).To(Equal("test-helm-release"))
-			Expect(hr.Namespace).To(Equal(fluxNamespace))
-		})
-
-		It("should return error when HelmRelease does not exist", func() {
-			_, err := reconciler.GetHelmRelease(ctx, "non-existent", fluxNamespace)
-
-			Expect(err).To(HaveOccurred())
-		})
-	})
-
-	Describe("IsDeployed", func() {
-		It("should return true when HelmRelease is deployed", func() {
-			isDeployed := reconciler.IsDeployed(testHelmRelease)
-			Expect(isDeployed).To(BeTrue())
-		})
-
-		It("should return false when HelmRelease has no history", func() {
-			testHelmRelease.Status.History = helmv2.Snapshots([]*helmv2.Snapshot{})
-
-			isDeployed := reconciler.IsDeployed(testHelmRelease)
-			Expect(isDeployed).To(BeFalse())
-		})
-
-		It("should return false when HelmRelease status is not deployed", func() {
-			testHelmRelease.Status.History[0].Status = "failed"
-
-			isDeployed := reconciler.IsDeployed(testHelmRelease)
-			Expect(isDeployed).To(BeFalse())
-		})
-	})
-
-	Describe("PatchHR", func() {
-		BeforeEach(func() {
-			Expect(fakeClient.Create(ctx, testHelmRelease)).To(Succeed())
-		})
-
-		It("should patch HelmRelease with force reconciliation annotations", func() {
-			err := reconciler.PatchHR(ctx, testHelmRelease)
-			Expect(err).NotTo(HaveOccurred())
-
-			updatedHR := &helmv2.HelmRelease{}
-			err = fakeClient.Get(ctx, types.NamespacedName{
-				Name:      testHelmRelease.Name,
-				Namespace: testHelmRelease.Namespace,
-			}, updatedHR)
-			Expect(err).NotTo(HaveOccurred())
-
-			Expect(updatedHR.Annotations).To(HaveKey("reconcile.fluxcd.io/forceAt"))
-			Expect(updatedHR.Annotations).To(HaveKey("reconcile.fluxcd.io/requestedAt"))
-		})
-	})
-
-	Describe("UpdateDigest", func() {
-		BeforeEach(func() {
-			Expect(fakeClient.Create(ctx, testConfigMap)).To(Succeed())
-		})
-
-		It("should update digest annotation on resource", func() {
-			newDigest := "new-digest-value"
-
-			err := reconciler.UpdateDigest(ctx, testConfigMap, newDigest)
-			Expect(err).NotTo(HaveOccurred())
-
-			updatedCM := &corev1.ConfigMap{}
-			err = fakeClient.Get(ctx, types.NamespacedName{
-				Name:      testConfigMap.Name,
-				Namespace: testConfigMap.Namespace,
-			}, updatedCM)
-			Expect(err).NotTo(HaveOccurred())
-
-			Expect(updatedCM.Annotations[controller.HashAnnotation]).To(Equal(newDigest))
-		})
-
-		It("should create annotations map if it doesn't exist", func() {
-			testConfigMap.Annotations = nil
-			Expect(fakeClient.Update(ctx, testConfigMap)).To(Succeed())
-
-			newDigest := "new-digest-value"
-			err := reconciler.UpdateDigest(ctx, testConfigMap, newDigest)
-			Expect(err).NotTo(HaveOccurred())
-
-			updatedCM := &corev1.ConfigMap{}
-			err = fakeClient.Get(ctx, types.NamespacedName{
-				Name:      testConfigMap.Name,
-				Namespace: testConfigMap.Namespace,
-			}, updatedCM)
-			Expect(err).NotTo(HaveOccurred())
-
-			Expect(updatedCM.Annotations).NotTo(BeNil())
-			Expect(updatedCM.Annotations[controller.HashAnnotation]).To(Equal(newDigest))
-		})
-	})
-
-	Describe("ReconcileResource", func() {
-		Context("when reconciling ConfigMap", func() {
-			BeforeEach(func() {
-				Expect(fakeClient.Create(ctx, testConfigMap)).To(Succeed())
-				Expect(fakeClient.Create(ctx, testHelmRelease)).To(Succeed())
-			})
-
-			It("should successfully reconcile when data changes", func() {
-				testConfigMap.Data["key3"] = "value3"
-				Expect(fakeClient.Update(ctx, testConfigMap)).To(Succeed())
-
-				req := ctrl.Request{
-					NamespacedName: types.NamespacedName{
-						Name:      testConfigMap.Name,
-						Namespace: testConfigMap.Namespace,
-					},
-				}
-
-				result, err := reconciler.ReconcileResource(ctx, req, &corev1.ConfigMap{})
-
-				Expect(err).NotTo(HaveOccurred())
-				Expect(result).To(Equal(ctrl.Result{}))
-			})
-
-			It("should skip reconciliation when HelmRelease annotation is missing", func() {
-				delete(testConfigMap.Annotations, controller.HRNameAnnotation)
-				Expect(fakeClient.Update(ctx, testConfigMap)).To(Succeed())
-
-				req := ctrl.Request{
-					NamespacedName: types.NamespacedName{
-						Name:      testConfigMap.Name,
-						Namespace: testConfigMap.Namespace,
-					},
-				}
-
-				result, err := reconciler.ReconcileResource(ctx, req, &corev1.ConfigMap{})
-
-				Expect(err).NotTo(HaveOccurred())
-				Expect(result).To(Equal(ctrl.Result{}))
-			})
-
-			It("should skip reconciliation when HelmRelease is not deployed", func() {
-				testHelmRelease.Status.History[0].Status = "failed"
-				Expect(fakeClient.Update(ctx, testHelmRelease)).To(Succeed())
-
-				req := ctrl.Request{
-					NamespacedName: types.NamespacedName{
-						Name:      testConfigMap.Name,
-						Namespace: testConfigMap.Namespace,
-					},
-				}
-
-				result, err := reconciler.ReconcileResource(ctx, req, &corev1.ConfigMap{})
-
-				Expect(err).NotTo(HaveOccurred())
-				Expect(result).To(Equal(ctrl.Result{}))
-			})
-
-			It("should skip reconciliation when digest hasn't changed", func() {
-				req := ctrl.Request{
-					NamespacedName: types.NamespacedName{
-						Name:      testConfigMap.Name,
-						Namespace: testConfigMap.Namespace,
-					},
-				}
-
-				_, err := reconciler.ReconcileResource(ctx, req, &corev1.ConfigMap{})
-				Expect(err).NotTo(HaveOccurred())
-
-				result, err := reconciler.ReconcileResource(ctx, req, &corev1.ConfigMap{})
-
-				Expect(err).NotTo(HaveOccurred())
-				Expect(result).To(Equal(ctrl.Result{}))
-			})
-		})
-
-		Context("when reconciling Secret", func() {
-			BeforeEach(func() {
-				Expect(fakeClient.Create(ctx, testSecret)).To(Succeed())
-				Expect(fakeClient.Create(ctx, testHelmRelease)).To(Succeed())
-			})
-
-			It("should successfully reconcile Secret when data changes", func() {
-				testSecret.Data["newkey"] = []byte("newvalue")
-				Expect(fakeClient.Update(ctx, testSecret)).To(Succeed())
-
-				req := ctrl.Request{
-					NamespacedName: types.NamespacedName{
-						Name:      testSecret.Name,
-						Namespace: testSecret.Namespace,
-					},
-				}
-
-				result, err := reconciler.ReconcileResource(ctx, req, &corev1.Secret{})
-
-				Expect(err).NotTo(HaveOccurred())
-				Expect(result).To(Equal(ctrl.Result{}))
-			})
-		})
-
-		Context("when resource doesn't exist", func() {
-			It("should return error when trying to reconcile non-existent resource", func() {
-				req := ctrl.Request{
-					NamespacedName: types.NamespacedName{
-						Name:      "non-existent",
-						Namespace: testNamespace,
-					},
-				}
-
-				_, err := reconciler.ReconcileResource(ctx, req, &corev1.ConfigMap{})
-
-				Expect(err).To(HaveOccurred())
-			})
-		})
-
-		Context("when HelmRelease doesn't exist", func() {
-			BeforeEach(func() {
-				Expect(fakeClient.Create(ctx, testConfigMap)).To(Succeed())
-			})
-
-			It("should return error when HelmRelease is not found", func() {
-				req := ctrl.Request{
-					NamespacedName: types.NamespacedName{
-						Name:      testConfigMap.Name,
-						Namespace: testConfigMap.Namespace,
-					},
-				}
-
-				_, err := reconciler.ReconcileResource(ctx, req, &corev1.ConfigMap{})
-
-				Expect(err).To(HaveOccurred())
-			})
-		})
-	})
-
-	Describe("GetCurrentDigest", func() {
-		It("should return digest from HelmRelease history", func() {
-			digest := reconciler.GetCurrentDigest(testHelmRelease)
-			Expect(digest).To(Equal("old-digest"))
-		})
-
-		It("should return empty string when no history exists", func() {
-			testHelmRelease.Status.History = helmv2.Snapshots([]*helmv2.Snapshot{})
-
-			digest := reconciler.GetCurrentDigest(testHelmRelease)
-			Expect(digest).To(BeEmpty())
-		})
-	})
-})
+	}
+}
