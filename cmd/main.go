@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"flag"
 	"os"
@@ -32,6 +33,7 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/certwatcher"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
@@ -310,6 +312,25 @@ func main() {
 	}
 
 	if config.enableHRAutodiscovery {
+		ctx := context.Background()
+
+		// Index HelmRelease by ConfigMaps or Secret used in ValuesFrom
+		if err := mgr.GetFieldIndexer().IndexField(
+			ctx, &helmv2.HelmRelease{}, "spec.valuesFrom", func(rawObj client.Object) []string {
+				hr := rawObj.(*helmv2.HelmRelease)
+				var helmReleaseNames []string
+
+				for _, valuesRef := range hr.Spec.ValuesFrom {
+					if valuesRef.Kind == "ConfigMap" || valuesRef.Kind == "Secret" {
+						helmReleaseNames = append(helmReleaseNames, valuesRef.Name)
+					}
+				}
+				return helmReleaseNames
+			}); err != nil {
+			setupLog.Error(err, "unable to setup ConfigMap index field for HelmRelease")
+			os.Exit(1)
+		}
+
 		if err = controller.NewHRAutodicoverReconciler(
 			mgr.GetClient(),
 			mgr.GetScheme(),
