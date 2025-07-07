@@ -24,10 +24,10 @@ import (
 )
 
 const (
-	LabelReconcilerNameSourceKey = "uburro.github.com/helmrelease-trigger-operator"
-	HRNameAnnotation             = "uburro.github.com/helmreleases-name"
-	HRNSAnnotation               = "uburro.github.com/helmreleases-namespace"
-	HashAnnotation               = "uburro.github.com/config-digest"
+	LabelReconcilerNameSourceKey = "nebius.ai/helmrelease-trigger-operator"
+	HRNameAnnotation             = "nebius.ai/helmreleases-name"
+	HRNSAnnotation               = "nebius.ai/helmreleases-namespace"
+	HashAnnotation               = "nebius.ai/config-digest"
 	DefaultFluxcdNamespace       = "flux-system"
 )
 

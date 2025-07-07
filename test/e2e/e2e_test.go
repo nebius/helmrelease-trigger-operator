@@ -27,7 +27,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/uburro/helmrelease-trigger-operator/test/utils"
+	"github.com/nebius/helmrelease-trigger-operator/test/utils"
 )
 
 // namespace where the project is deployed in

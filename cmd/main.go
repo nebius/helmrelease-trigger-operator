@@ -42,7 +42,7 @@ import (
 
 	// +kubebuilder:scaffold:imports
 
-	"github.com/uburro/helmrelease-trigger-operator/internal/controller"
+	"github.com/nebius/helmrelease-trigger-operator/internal/controller"
 
 	helmv2 "github.com/fluxcd/helm-controller/api/v2"
 
@@ -259,7 +259,7 @@ func main() {
 		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: config.probeAddr,
 		LeaderElection:         config.enableLeaderElection,
-		LeaderElectionID:       "2f7211df.uburro.github.com",
+		LeaderElectionID:       "2f7211df.nebius.ai",
 		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
 		// when the Manager ends. This requires the binary to immediately end when the
 		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly

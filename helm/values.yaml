@@ -16,7 +16,7 @@ controllerManager:
       runAsUser: 65534
       runAsGroup: 65534
     image:
-      repository: ghcr.io/uburro/helmrelease-trigger-operator
+      repository: ghcr.io/nebius/helmrelease-trigger-operator
       tag: 0.2.0
     resources: 
       limits:

@@ -12,7 +12,7 @@ The HelmRelease Trigger Operator monitors ConfigMaps with specific labels and an
 
 ## How It Works
 
-The operator watches for ConfigMaps labeled with `github.com/uburro/helmrelease-trigger-operator: "true"` and:
+The operator watches for ConfigMaps labeled with `nebius.ai/helmrelease-trigger-operator: "true"` and:
 
 1. **Monitors ConfigMap Changes**: Detects create, update, and generic events on labeled ConfigMaps
 2. **Extracts HelmRelease References**: Uses annotations to identify the target HelmRelease
@@ -37,9 +37,9 @@ The HelmRelease Trigger Operator implements **autodiscovery** by scanning all He
 1. **HelmRelease Scanning**: The operator scans all HelmReleases in the cluster.
 2. **`valuesFrom` Detection**: It checks if the HelmRelease configuration includes the `valuesFrom` field, which indicates dependency on external resources like ConfigMaps or Secrets.
 3. **Automatic Labeling**: For HelmReleases using `valuesFrom`, the operator adds the following labels:
-   - `"uburro.github.com/helmrelease-trigger-operator": "true"`: Marks the HelmRelease as managed by the operator.
-   - `"uburro.github.com/helmreleases-namespace": "<namespace>"`: Specifies the namespace of the HelmRelease.
-   - `"uburro.github.com/helmreleases-name": "<name>"`: Specifies the name of the HelmRelease.
+   - `"nebius.ai/helmrelease-trigger-operator": "true"`: Marks the HelmRelease as managed by the operator.
+   - `"nebius.ai/helmreleases-namespace": "<namespace>"`: Specifies the namespace of the HelmRelease.
+   - `"nebius.ai/helmreleases-name": "<name>"`: Specifies the name of the HelmRelease.
 
 4. **Continuous Monitoring**: The operator continuously monitors the cluster for changes to HelmReleases and updates labels dynamically as needed.
 
@@ -60,7 +60,7 @@ kustomize build config/default | kubectl apply -f
 or
 
 ```
-helm install hrto oci://ghcr.io/uburro/helmrelease-trigger-operator
+helm install hrto oci://ghcr.io/nebius/helmrelease-trigger-operator
 ```
 
 ### Verify Installation
@@ -79,7 +79,7 @@ ConfigMaps must have the following label to be monitored by the operator:
 ```yaml
 metadata:
   labels:
-    github.com/uburro/helmrelease-trigger-operator: "true"
+    nebius.ai/helmrelease-trigger-operator: "true"
 ```
 
 ### Required ConfigMap Annotations
@@ -90,10 +90,10 @@ ConfigMaps must include annotations to specify the target HelmRelease:
 metadata:
   annotations:
     # Required: Name of the target HelmRelease
-    uburro.github.com/helmreleases-name: "my-app"
+    nebius.ai/helmreleases-name: "my-app"
     
     # Optional: Namespace of the target HelmRelease (defaults to flux-system)
-    uburro.github.com/helmreleases-namespace: "production"
+    nebius.ai/helmreleases-namespace: "production"
 ```
 
 ### Environment Variables
@@ -145,10 +145,10 @@ metadata:
   name: my-app-config
   namespace: default
   labels:
-    github.com/uburro/helmrelease-trigger-operator: "true"
+    nebius.ai/helmrelease-trigger-operator: "true"
   annotations:
-    uburro.github.com/helmreleases-name: "my-app"
-    uburro.github.com/helmreleases-namespace: "flux-system"
+    nebius.ai/helmreleases-name: "my-app"
+    nebius.ai/helmreleases-namespace: "flux-system"
 data:
   config.yaml: |
     database:
@@ -179,10 +179,10 @@ metadata:
   name: production-config
   namespace: app-configs
   labels:
-    github.com/uburro/helmrelease-trigger-operator: "true"
+    nebius.ai/helmrelease-trigger-operator: "true"
   annotations:
-    uburro.github.com/helmreleases-name: "production-app"
-    uburro.github.com/helmreleases-namespace: "production"
+    nebius.ai/helmreleases-name: "production-app"
+    nebius.ai/helmreleases-namespace: "production"
 data:
   values.yaml: |
     environment=production
@@ -220,7 +220,7 @@ rules:
 kubectl logs -n helmrelease-trigger-operator-system deployment/helmrelease-trigger-operator
 
 # Check if ConfigMaps are being watched
-kubectl get configmaps -l github.com/uburro/helmrelease-trigger-operator=true -A
+kubectl get configmaps -l nebius.ai/helmrelease-trigger-operator=true -A
 
 # Verify HelmRelease reconciliation
 kubectl get helmreleases -A
@@ -230,7 +230,7 @@ kubectl describe helmrelease my-app -n flux-system
 ### Common Issues
 
 1. **ConfigMap changes not triggering reconciliation**
-   - Verify the ConfigMap has the required label: `github.com/uburro/helmrelease-trigger-operator: "true"`
+   - Verify the ConfigMap has the required label: `nebius.ai/helmrelease-trigger-operator: "true"`
    - Check annotations for correct HelmRelease name and namespace
    - Ensure the target HelmRelease exists
 
@@ -285,18 +285,18 @@ kubectl get helmrelease my-app -o jsonpath='{.metadata.annotations.reconcile\.fl
 
 | Annotation | Required | Description | Example |
 |------------|----------|-------------|---------|
-| `uburro.github.com/helmreleases-name` | Yes | Target HelmRelease name | `my-hr1,my-hr2` |
-| `uburro.github.com/helmreleases-namespace` | No | Target HelmRelease namespace | `production` |
-| `uburro.github.com/config-digest` | No | Last processed digest (auto-managed) | `sha256:abc123...` |
+| `nebius.ai/helmreleases-name` | Yes | Target HelmRelease name | `my-hr1,my-hr2` |
+| `nebius.ai/helmreleases-namespace` | No | Target HelmRelease namespace | `production` |
+| `nebius.ai/config-digest` | No | Last processed digest (auto-managed) | `sha256:abc123...` |
 
 ## Constants Reference
 
 | Constant | Value | Description |
 |----------|-------|-------------|
-| `LabelReconcilerNameSourceKey` | `uburro.github.com/helmrelease-trigger-operator` | Required label for monitoring |
-| `HRNameAnnotation` | `uburro.github.com/helmreleases-name` | HelmRelease name annotation |
-| `HRNSAnnotation` | `uburro.github.com/helmreleases-namespace` | HelmRelease namespace annotation |
-| `HashAnnotation` | `uburro.github.com/config-digest` | Digest tracking annotation |
+| `LabelReconcilerNameSourceKey` | `nebius.ai/helmrelease-trigger-operator` | Required label for monitoring |
+| `HRNameAnnotation` | `nebius.ai/helmreleases-name` | HelmRelease name annotation |
+| `HRNSAnnotation` | `nebius.ai/helmreleases-namespace` | HelmRelease namespace annotation |
+| `HashAnnotation` | `nebius.ai/config-digest` | Digest tracking annotation |
 | `DefaultFluxcdNamespace` | `flux-system` | Default namespace for HelmReleases |
 
 ## Contributing
