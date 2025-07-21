@@ -1,0 +1,23 @@
+# EditorConfig is awesome: http://EditorConfig.org
+
+# top-most EditorConfig file
+root = true
+
+# Unix-style newlines with a newline ending every file
+[*]
+end_of_line = lf
+insert_final_newline = true
+indent_style = space
+indent_size = 2
+
+[{Makefile,.gitmodules}]
+indent_style = tab
+indent_size = 4
+
+[*.md]
+indent_size = 4
+trim_trailing_whitespace = false
+
+[{Dockerfile,*.dockerfile}]
+indent_size = 4
+
