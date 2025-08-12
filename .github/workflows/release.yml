@@ -41,12 +41,14 @@ jobs:
 
       - name: Build and push ${{ matrix.arch }} image
         run: |
+          VERSION=${{ steps.get_version.outputs.version }}
+          IMAGE_VERSION=${VERSION#v}
           docker build \
             --platform linux/${{ matrix.arch }} \
-            -t cr.eu-north1.nebius.cloud/soperator/helmrelease-trigger-operator:${{ steps.get_version.outputs.version }}-${{ matrix.suffix }} \
+            -t cr.eu-north1.nebius.cloud/soperator/helmrelease-trigger-operator:${IMAGE_VERSION}-${{ matrix.suffix }} \
             -f Dockerfile .
           
-          docker push cr.eu-north1.nebius.cloud/soperator/helmrelease-trigger-operator:${{ steps.get_version.outputs.version }}-${{ matrix.suffix }}
+          docker push cr.eu-north1.nebius.cloud/soperator/helmrelease-trigger-operator:${IMAGE_VERSION}-${{ matrix.suffix }}
 
   create_multiarch_manifest:
     needs: build_and_push
