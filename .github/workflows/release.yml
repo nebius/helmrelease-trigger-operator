@@ -115,7 +115,7 @@ jobs:
         run: |
           VERSION=${{ steps.get_version.outputs.version }}
           CHART_VERSION=${VERSION#v}
-          CHART_NAME="helmrelease-trigger-operator"
+          CHART_NAME="helm-helmrelease-trigger-operator"
           CHART_TARGET="${CHART_NAME}-${CHART_VERSION}.tgz"
           RELEASE_PATH="."
           HELM_PATH="."
