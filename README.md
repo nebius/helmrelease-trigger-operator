@@ -52,22 +52,105 @@ The HelmRelease Trigger Operator implements **autodiscovery** by scanning all He
 
 ## Installation
 
+### Using Helm (Recommended)
+
+Install the HelmRelease Trigger Operator using the Helm chart from Nebius Container Registry:
+
+```bash
+# Add the Nebius Helm repository (OCI-based)
+helm install helmrelease-trigger-operator \
+  oci://cr.eu-north1.nebius.cloud/soperator/helm-helmrelease-trigger-operator \
+  --version <version> \
+  --namespace helmrelease-trigger-operator-system \
+  --create-namespace
+```
+
+To install the latest version:
+
+```bash
+helm install helmrelease-trigger-operator \
+  oci://cr.eu-north1.nebius.cloud/soperator/helm-helmrelease-trigger-operator \
+  --namespace helmrelease-trigger-operator-system \
+  --create-namespace
+```
+
+#### Custom Values
+
+You can customize the installation by providing your own values:
+
+```bash
+# Create values file
+cat <<EOF > values.yaml
+controllerManager:
+  manager:
+    args:
+    - --metrics-bind-address=:8443
+    - --leader-elect
+    - --health-probe-bind-address=:8081
+    - --enable-hr-autodiscovery=true
+    - --log-format=json
+    - --log-level=debug
+    resources:
+      limits:
+        memory: 256Mi
+      requests:
+        cpu: 200m
+        memory: 128Mi
+  replicas: 2
+EOF
+
+# Install with custom values
+helm install helmrelease-trigger-operator \
+  oci://cr.eu-north1.nebius.cloud/soperator/helm-helmrelease-trigger-operator \
+  --values values.yaml \
+  --namespace helmrelease-trigger-operator-system \
+  --create-namespace
+```
+
 ### Using kubectl
 
 ```bash
-kustomize build config/default | kubectl apply -f
-```
-or
-
-```
-helm install hrto oci://ghcr.io/nebius/helmrelease-trigger-operator
-```
+kustomize build config/default | kubectl apply -f -
 
 ### Verify Installation
 
 ```bash
+# Check if the operator pod is running
 kubectl get pods -n helmrelease-trigger-operator-system
-kubectl logs -n helmrelease-trigger-operator-system deployment/helmrelease-trigger-operator
+
+# View operator logs
+kubectl logs -n helmrelease-trigger-operator-system deployment/helmrelease-trigger-operator-controller-manager
+
+# Check the Helm release status
+helm list -n helmrelease-trigger-operator-system
+```
+
+### Upgrade
+
+To upgrade to a newer version:
+
+```bash
+# Upgrade to specific version
+helm upgrade helmrelease-trigger-operator \
+  oci://cr.eu-north1.nebius.cloud/soperator/helm-helmrelease-trigger-operator \
+  --version <new-version> \
+  --namespace helmrelease-trigger-operator-system
+
+# Upgrade to latest version
+helm upgrade helmrelease-trigger-operator \
+  oci://cr.eu-north1.nebius.cloud/soperator/helm-helmrelease-trigger-operator \
+  --namespace helmrelease-trigger-operator-system
+```
+
+### Uninstall
+
+```bash
+# Uninstall the Helm release
+helm uninstall helmrelease-trigger-operator \
+  --namespace helmrelease-trigger-operator-system
+
+# Optionally, delete the namespace
+kubectl delete namespace helmrelease-trigger-operator-system
 ```
 
 ## Configuration
