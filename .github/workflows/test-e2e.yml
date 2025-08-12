@@ -2,7 +2,13 @@ name: E2E Tests
 
 on:
   push:
+    tags-ignore:
+      - '**'
+    paths-ignore:
+      - '.github/workflows/**'
   pull_request:
+    paths-ignore:
+      - '.github/workflows/**'
 
 jobs:
   test-e2e:

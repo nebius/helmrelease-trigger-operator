@@ -2,7 +2,13 @@ name: Lint
 
 on:
   push:
+    tags-ignore:
+      - '**'
+    paths-ignore:
+      - '.github/workflows/**'
   pull_request:
+    paths-ignore:
+      - '.github/workflows/**'
 
 jobs:
   lint:

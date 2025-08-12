@@ -115,14 +115,16 @@ jobs:
         run: |
           VERSION=${{ steps.get_version.outputs.version }}
           CHART_VERSION=${VERSION#v}
-          CHART_NAME="helm-helmrelease-trigger-operator"
-          CHART_TARGET="${CHART_NAME}-${CHART_VERSION}.tgz"
           RELEASE_PATH="."
           HELM_PATH="."
           OCI_REPO="oci://cr.eu-north1.nebius.cloud/soperator"
           
-          echo "Packaging chart ${CHART_NAME} as ${CHART_TARGET}."
+          echo "Packaging helm chart with version ${CHART_VERSION}."
           helm package -d "${RELEASE_PATH}" "${HELM_PATH}/helm"
           
-          echo "Pushing ${CHART_TARGET} to Container registry - ${OCI_REPO}"
-          helm push "${RELEASE_PATH}/${CHART_TARGET}" "${OCI_REPO}"
+          # Find the actual packaged file (any .tgz file created)
+          PACKAGED_FILE=$(ls ${RELEASE_PATH}/*.tgz | head -n1)
+          echo "Found packaged file: ${PACKAGED_FILE}"
+          
+          echo "Pushing ${PACKAGED_FILE} to Container registry - ${OCI_REPO}"
+          helm push "${PACKAGED_FILE}" "${OCI_REPO}"
