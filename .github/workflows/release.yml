@@ -1,0 +1,128 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag'
+        required: true
+        type: string
+
+jobs:
+  build_and_push:
+    runs-on: self-hosted
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            suffix: amd
+          - arch: arm64
+            suffix: arm
+
+    name: Building and push image for ${{ matrix.arch }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get tag version
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "version=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Add docker-credential-nebius to PATH
+        run: echo "/home/helmrelease-trigger-operator/.nebius/bin" >> $GITHUB_PATH
+
+      - name: Build and push ${{ matrix.arch }} image
+        run: |
+          docker build \
+            --platform linux/${{ matrix.arch }} \
+            -t cr.eu-north1.nebius.cloud/soperator/helmrelease-trigger-operator:${{ steps.get_version.outputs.version }}-${{ matrix.suffix }} \
+            -f Dockerfile .
+          
+          docker push cr.eu-north1.nebius.cloud/soperator/helmrelease-trigger-operator:${{ steps.get_version.outputs.version }}-${{ matrix.suffix }}
+
+  create_multiarch_manifest:
+    needs: build_and_push
+    runs-on: self-hosted
+    steps:
+      - name: Get tag version
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "version=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Add docker-credential-nebius to PATH
+        run: echo "/home/helmrelease-trigger-operator/.nebius/bin" >> $GITHUB_PATH
+
+      - name: Create and push multi-arch manifest
+        run: |
+          docker manifest create \
+            cr.eu-north1.nebius.cloud/soperator/helmrelease-trigger-operator:${{ steps.get_version.outputs.version }} \
+            cr.eu-north1.nebius.cloud/soperator/helmrelease-trigger-operator:${{ steps.get_version.outputs.version }}-amd \
+            cr.eu-north1.nebius.cloud/soperator/helmrelease-trigger-operator:${{ steps.get_version.outputs.version }}-arm
+          
+          docker manifest push cr.eu-north1.nebius.cloud/soperator/helmrelease-trigger-operator:${{ steps.get_version.outputs.version }}
+
+  helm_release:
+    needs: create_multiarch_manifest
+    runs-on: self-hosted
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get tag version
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "version=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: 'latest'
+
+      - name: Update Helm chart version and appVersion
+        run: |
+          VERSION=${{ steps.get_version.outputs.version }}
+          # Remove 'v' prefix for Helm chart version (semantic versioning)
+          CHART_VERSION=${VERSION#v}
+          
+          # Update Chart.yaml with new version and appVersion
+          sed -i "s/^version:.*/version: $CHART_VERSION/" helm/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"$VERSION\"/" helm/Chart.yaml
+          
+          # Update image repository and tag in values.yaml
+          sed -i "s|repository:.*|repository: cr.eu-north1.nebius.cloud/soperator/helmrelease-trigger-operator|" helm/values.yaml
+          sed -i "s/tag:.*/tag: $VERSION/" helm/values.yaml
+
+      - name: Add docker-credential-nebius to PATH for Helm
+        run: echo "/home/helmrelease-trigger-operator/.nebius/bin" >> $GITHUB_PATH
+
+      - name: Package and push Helm chart
+        run: |
+          VERSION=${{ steps.get_version.outputs.version }}
+          CHART_VERSION=${VERSION#v}
+          CHART_NAME="helmrelease-trigger-operator"
+          CHART_TARGET="${CHART_NAME}-${CHART_VERSION}.tgz"
+          RELEASE_PATH="."
+          HELM_PATH="."
+          OCI_REPO="oci://cr.eu-north1.nebius.cloud/soperator"
+          
+          echo "Packaging chart ${CHART_NAME} as ${CHART_TARGET}."
+          helm package -d "${RELEASE_PATH}" "${HELM_PATH}/helm"
+          
+          echo "Pushing helm-${CHART_TARGET} to Container registry - ${OCI_REPO}"
+          helm push "${RELEASE_PATH}/helm-${CHART_TARGET}" "${OCI_REPO}"
