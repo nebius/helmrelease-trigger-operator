@@ -66,12 +66,14 @@ jobs:
 
       - name: Create and push multi-arch manifest
         run: |
+          VERSION=${{ steps.get_version.outputs.version }}
+          DOCKER_IMAGE_VERSION=${VERSION#v}
           docker manifest create --amend \
-            cr.eu-north1.nebius.cloud/soperator/helmrelease-trigger-operator:${{ steps.get_version.outputs.version }} \
-            cr.eu-north1.nebius.cloud/soperator/helmrelease-trigger-operator:${{ steps.get_version.outputs.version }}-amd \
-            cr.eu-north1.nebius.cloud/soperator/helmrelease-trigger-operator:${{ steps.get_version.outputs.version }}-arm
+            cr.eu-north1.nebius.cloud/soperator/helmrelease-trigger-operator:${DOCKER_IMAGE_VERSION} \
+            cr.eu-north1.nebius.cloud/soperator/helmrelease-trigger-operator:${DOCKER_IMAGE_VERSION}-amd \
+            cr.eu-north1.nebius.cloud/soperator/helmrelease-trigger-operator:${DOCKER_IMAGE_VERSION}-arm
           
-          docker manifest push cr.eu-north1.nebius.cloud/soperator/helmrelease-trigger-operator:${{ steps.get_version.outputs.version }}
+          docker manifest push cr.eu-north1.nebius.cloud/soperator/helmrelease-trigger-operator:${DOCKER_IMAGE_VERSION}
 
   helm_release:
     needs: create_multiarch_manifest
@@ -106,7 +108,7 @@ jobs:
           
           # Update image repository and tag in values.yaml
           sed -i "s|repository:.*|repository: cr.eu-north1.nebius.cloud/soperator/helmrelease-trigger-operator|" helm/values.yaml
-          sed -i "s/tag:.*/tag: $VERSION/" helm/values.yaml
+          sed -i "s/tag:.*/tag: $CHART_VERSION/" helm/values.yaml
 
       - name: Add docker-credential-nebius to PATH for Helm
         run: echo "/home/helmrelease-trigger-operator/.nebius/bin" >> $GITHUB_PATH

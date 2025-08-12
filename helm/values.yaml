@@ -16,8 +16,8 @@ controllerManager:
       runAsUser: 65534
       runAsGroup: 65534
     image:
-      repository: ghcr.io/nebius/helmrelease-trigger-operator
-      tag: 0.2.0
+      repository: cr.eu-north1.nebius.cloud/soperator/helmrelease-trigger-operator
+      tag: 0.0.1
     resources: 
       limits:
         memory: 128Mi
