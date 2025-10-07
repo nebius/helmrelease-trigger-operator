@@ -3,14 +3,14 @@ name: Lint
 on:
   push:
     tags-ignore:
-      - '**'
+      - "**"
     paths-ignore:
-      - '.github/workflows/**'
-      - '**/*.md'
+      - ".github/workflows/**"
+      - "**/*.md"
   pull_request:
     paths-ignore:
-      - '.github/workflows/**'
-      - '**/*.md'
+      - ".github/workflows/**"
+      - "**/*.md"
 
 jobs:
   lint:
@@ -26,6 +26,6 @@ jobs:
           go-version-file: go.mod
 
       - name: Run linter
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v8
         with:
-          version: v1.64.2
+          version: v2.0.2
