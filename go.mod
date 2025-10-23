@@ -6,7 +6,7 @@ godebug default=go1.23
 
 require (
 	github.com/fluxcd/helm-controller/api v1.3.0
-	github.com/onsi/ginkgo/v2 v2.26.0
+	github.com/onsi/ginkgo/v2 v2.27.1
 	github.com/onsi/gomega v1.38.2
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/zap v1.27.0
